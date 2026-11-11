@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Quản lý phòng mạch tư{% endblock %}</title>
+</head>
+<body>
+    {% include "layout/header.html" %}
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    {% include "layout/footer.html" %}
+</body>
+</html>

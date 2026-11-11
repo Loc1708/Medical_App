@@ -1,11 +1,13 @@
+import os
+
 from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
 
 
-def create_app():
-    app = Flask(__name__)
+app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get(
+    "DATABASE_URL", "sqlite:///medical.db"
+)
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    @app.get("/")
-    def index():
-        return "<h1>Flask server đang chạy!</h1>"
-
-    return app
+db = SQLAlchemy(app)

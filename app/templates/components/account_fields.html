@@ -1,0 +1,72 @@
+<div class="row g-3">
+    <div class="col-md-6">
+        <label class="form-label" for="name">Họ tên <span class="text-danger">*</span></label>
+        <input class="form-control" id="name" name="hoTen" maxlength="100" required value="{{ values.get('hoTen', '') }}">
+    </div>
+    <div class="col-md-6">
+        <label class="form-label" for="username">Tên đăng nhập <span class="text-danger">*</span></label>
+        <input class="form-control" id="username" name="tenDangNhap" required minlength="3" maxlength="80"
+               pattern="[a-zA-Z0-9_.\-]{3,80}" autocomplete="username" value="{{ values.get('tenDangNhap', '') }}">
+        <small class="text-muted">Chữ không dấu, số, dấu chấm, gạch dưới hoặc gạch ngang.</small>
+    </div>
+    {% if not registration %}
+    <div class="col-md-6">
+        <label class="form-label" for="role">Vai trò</label>
+        <select class="form-select" id="role" name="role" data-role-select>
+            {% for role in Role %}
+            <option value="{{ role.value }}" {% if values.get('role', 'PATIENT') == role.value %}selected{% endif %}>{{ role.label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+    {% from "components/password_input.html" import password_input %}
+    <div class="col-md-6">
+        <label class="form-label" for="password">Mật khẩu{% if account %} mới (để trống nếu không đổi){% endif %}</label>
+        {{ password_input('password', 'matKhau', not account, 'Không bắt buộc' if account else '') }}
+        <small class="text-muted">Từ 10 đến 128 ký tự. Không hiển thị lại mật khẩu đã lưu.</small>
+    </div>
+    {% if not registration %}
+    <div class="col-md-6">
+        <label class="form-label" for="confirm">Xác nhận mật khẩu{% if account %} mới{% endif %}</label>
+        {{ password_input('confirm', 'xacNhanMatKhau', not account, 'Nhập lại nếu đổi mật khẩu' if account else 'Nhập lại mật khẩu') }}
+    </div>
+    {% endif %}
+    <div class="col-md-6">
+        <label class="form-label" for="phone">Số điện thoại</label>
+        <input class="form-control" id="phone" name="soDienThoai" type="tel" maxlength="16" {% if registration %}required{% endif %} value="{{ values.get('soDienThoai', '') }}">
+        <small class="text-muted">Bắt buộc với bệnh nhân; nhân viên có thể bổ sung sau.</small>
+    </div>
+    {% if not registration %}
+    <div class="mt-3">
+        <p class="form-label">Trạng thái hoạt động</p>
+        <div class="form-check form-switch">
+            <input class="form-check-input" id="active" name="trangThai" type="checkbox" role="switch"
+                   {% if values.get('trangThai', 'on' if not request.form and not account else '') == 'on' %}checked{% endif %}>
+            <label class="form-check-label" for="active">Cho phép đăng nhập</label>
+        </div>
+    </div>
+    {% endif %}
+</div>
+<div data-role-fields="PATIENT" class="row g-3 mt-1">
+    <div class="col-md-6">
+        <label class="form-label" for="gender">Giới tính</label>
+        <select class="form-select" id="gender" name="gioiTinh" required>
+            <option value="">Chọn giới tính</option>
+            {% for gender in ['Nam', 'Nữ', 'Khác'] %}
+            <option {% if values.get('gioiTinh') == gender %}selected{% endif %}>{{ gender }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="col-md-6">
+        <label class="form-label" for="year">Năm sinh</label>
+        <input class="form-control" id="year" name="namSinh" type="number" min="1900" required value="{{ values.get('namSinh', '') }}">
+    </div>
+    <div class="col-12">
+        <label class="form-label" for="address">Địa chỉ</label>
+        <input class="form-control" id="address" name="diaChi" maxlength="255" required value="{{ values.get('diaChi', '') }}">
+    </div>
+</div>
+<div data-role-fields="DOCTOR" class="mt-3" {% if registration %}hidden{% endif %}>
+    <label class="form-label" for="specialty">Chuyên khoa</label>
+    <input class="form-control" id="specialty" name="chuyenKhoa" maxlength="100" value="{{ values.get('chuyenKhoa', '') }}">
+</div>

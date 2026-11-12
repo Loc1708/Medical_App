@@ -1,0 +1,21 @@
+{% extends "layout/base.html" %}
+{% block title %}Đăng ký bệnh nhân · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="panel form-panel">
+    <span class="eyebrow">DÀNH CHO NGƯỜI BỆNH</span>
+    <h1 class="h3 mt-2">Đăng ký tài khoản</h1>
+    <p class="text-muted">Tài khoản đăng ký tại đây luôn có vai trò <strong>Bệnh nhân</strong>.</p>
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% set values = request.form %}
+        {% set registration = true %}
+        {% set account = none %}
+        {% include "components/account_fields.html" %}
+        <label class="form-label mt-3" for="confirm">Xác nhận mật khẩu</label>
+        <input id="confirm" class="form-control" type="password" name="xacNhanMatKhau"
+               minlength="10" maxlength="128" autocomplete="new-password" required>
+        <button class="btn btn-primary mt-4">Đăng ký</button>
+        <a class="btn btn-link mt-4" href="{{ url_for('login_view') }}">Đã có tài khoản?</a>
+    </form>
+</div>
+{% endblock %}

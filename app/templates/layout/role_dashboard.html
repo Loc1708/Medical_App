@@ -1,0 +1,13 @@
+{% extends "layout/base.html" %}
+{% block content %}
+<div class="page-heading">
+    <div><span class="eyebrow">KHÔNG GIAN {{ current_user.role.label|upper }}</span>
+        <h1 class="h3 mt-2">Xin chào, {{ current_user.hoTen }}</h1>
+        <p class="text-muted">Bạn đang sử dụng tài khoản {{ current_user.role.label|lower }}.</p>
+    </div>
+</div>
+<section class="panel mt-4">
+    {% block role_content %}{% endblock %}
+    <p class="text-muted mb-0">Đợt này đã triển khai đăng nhập và quản lý tài khoản. Chức năng nghiệp vụ bên dưới sẽ được phát triển ở đợt tiếp theo.</p>
+</section>
+{% endblock %}

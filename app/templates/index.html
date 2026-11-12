@@ -1,5 +1,18 @@
 {% extends "layout/base.html" %}
 
 {% block content %}
-<h1>Flask server đang chạy!</h1>
+<section class="welcome-panel">
+    <span class="eyebrow">CHĂM SÓC SỨC KHỎE · KẾT NỐI TIN CẬY</span>
+    <h1 class="mt-3">Chào mừng đến<br>Phòng mạch Nhịp Sống</h1>
+    <p class="lead mt-3">Một không gian chung, chức năng phù hợp cho từng vai trò.</p>
+    <div class="d-flex gap-3 flex-wrap mt-4">
+        <a class="btn btn-primary" href="{{ url_for('login_view') }}">Đăng nhập hệ thống</a>
+        <a class="btn btn-outline-primary" href="{{ url_for('register') }}">Tạo tài khoản bệnh nhân</a>
+    </div>
+</section>
+<div class="row g-3 mt-3">
+    {% for title, detail in [("Dễ sử dụng", "Giao diện rõ ràng, đồng nhất trên các thiết bị."), ("Phân quyền rõ ràng", "Mỗi tài khoản chỉ truy cập chức năng được cho phép."), ("Kết nối phòng mạch", "Hồ sơ bệnh nhân và nhân viên gắn với tài khoản riêng.")] %}
+    <div class="col-md-4"><div class="panel h-100"><h2 class="h5">{{ title }}</h2><p class="text-muted mb-0">{{ detail }}</p></div></div>
+    {% endfor %}
+</div>
 {% endblock %}

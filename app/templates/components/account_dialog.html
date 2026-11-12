@@ -1,0 +1,7 @@
+<div class="modal-header">
+    <h2 class="modal-title h5" id="account-modal-title">{{ 'Sửa tài khoản: ' ~ account.tenDangNhap if account else 'Tạo tài khoản mới' }}</h2>
+    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Đóng"></button>
+</div>
+<div class="modal-body account-dialog">
+    {% include "components/account_editor.html" %}
+</div>

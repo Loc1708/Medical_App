@@ -1,0 +1,16 @@
+<aside class="sidebar" aria-label="Điều hướng">
+    <p class="nav-caption">KHÔNG GIAN LÀM VIỆC</p>
+    <nav>
+        {% if not (database_unavailable|default(false)) and current_user.is_authenticated %}
+        <span class="role-badge">{{ current_user.role.label }}</span>
+        {% if current_user.role == Role.ADMIN %}
+        <a class="nav-item active" href="{{ url_for('admin_accounts') }}">Quản lý tài khoản</a>
+        {% else %}
+        <a class="nav-item active" href="{{ url_for('dashboard') }}">Tổng quan</a>
+        {% endif %}
+        {% else %}
+        <a class="nav-item" href="{{ url_for('index') }}">Trang chủ</a>
+        {% endif %}
+    </nav>
+    <div class="sidebar-note">Thông tin tài khoản và quyền truy cập được quản lý theo vai trò.</div>
+</aside>

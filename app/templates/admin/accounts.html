@@ -1,0 +1,68 @@
+{% extends "layout/base.html" %}
+{% block title %}Quản lý tài khoản · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <div><h1 class="h3">Quản lý tài khoản</h1>
+        <p class="text-muted mb-0">Xem danh sách, cập nhật trạng thái và phân quyền tài khoản.</p></div>
+</div>
+<section class="panel accounts-panel mt-4">
+    <div class="accounts-panel-heading">
+        <h2 class="h6 mb-0">Tài khoản hiện có</h2>
+        <a class="btn btn-primary btn-sm" data-account-modal href="{{ url_for('admin_account_create') }}">+ Tạo tài khoản</a>
+    </div>
+    <div class="accounts-panel-body">
+    <form class="row g-3 align-items-end mb-4" method="get">
+        <div class="col-md-6"><label class="form-label" for="q">Tìm tài khoản</label>
+            <input class="form-control" id="q" name="q" maxlength="80" placeholder="Tìm theo họ tên, tên đăng nhập…" value="{{ keyword }}"></div>
+        <div class="col-md-4"><label class="form-label" for="filter-role">Vai trò</label>
+            <select class="form-select" id="filter-role" name="role">
+                <option value="">Tất cả vai trò</option>
+                {% for role in Role %}<option value="{{ role.value }}" {% if role_filter == role.value %}selected{% endif %}>{{ role.label }}</option>{% endfor %}
+            </select></div>
+        <div class="col-md-2"><button class="btn btn-outline-primary w-100">Tìm kiếm</button></div>
+    </form>
+    <div class="table-responsive">
+        <table class="table align-middle">
+            <thead><tr><th>Mã tài khoản</th><th>Mã hồ sơ</th><th>Họ và tên</th><th>Tên đăng nhập</th><th>Chức vụ / quyền</th><th>Trạng thái</th><th class="text-end">Thao tác</th></tr></thead>
+            <tbody>
+                {% for account in page.items %}
+                <tr>
+                    <td>{{ account.maTK }}</td>
+                    <td class="text-nowrap">{{ account.maHoSo }}</td>
+                    <td>{{ account.hoTen }}{% if account.maTK == current_user.maTK %}<small class="d-block text-muted">Tài khoản của bạn</small>{% endif %}</td>
+                    <td>{{ account.tenDangNhap }}</td><td><span class="role-badge account-role">{{ account.role.label }}</span></td>
+                    <td>
+                        <form class="account-status-form" method="post" action="{{ url_for('admin_account_status', account_id=account.maTK) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="active" value="{{ '0' if account.trangThai else '1' }}">
+                            <input type="hidden" name="q" value="{{ keyword }}">
+                            <input type="hidden" name="filter_role" value="{{ role_filter }}">
+                            <input type="hidden" name="page" value="{{ page.page }}">
+                            <span class="status {{ 'enabled' if account.trangThai else 'disabled' }}">{{ 'Đang hoạt động' if account.trangThai else 'Đã khóa' }}</span>
+                            <button type="submit" class="status-switch {{ 'is-on' if account.trangThai else '' }}"
+                                    role="switch" aria-checked="{{ 'true' if account.trangThai else 'false' }}"
+                                    aria-label="{{ 'Khóa' if account.trangThai else 'Mở khóa' }} tài khoản {{ account.tenDangNhap }}"
+                                    {% if account.maTK == current_user.maTK %}disabled title="Không được tự khóa tài khoản"{% endif %}>
+                                <span></span>
+                            </button>
+                        </form>
+                    </td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" data-account-modal href="{{ url_for('admin_account_edit', account_id=account.maTK) }}">Sửa</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="text-center text-muted py-5">Không tìm thấy tài khoản phù hợp.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <small class="text-muted">{{ page.total }} tài khoản · Trang {{ page.page }} / {{ page.pages or 1 }}</small>
+        <nav aria-label="Phân trang tài khoản">
+            {% if page.has_prev %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_accounts', page=page.prev_num, q=keyword, role=role_filter) }}">Trước</a>{% endif %}
+            {% if page.has_next %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_accounts', page=page.next_num, q=keyword, role=role_filter) }}">Tiếp</a>{% endif %}
+        </nav>
+    </div>
+    </div>
+</section>
+{% include "components/modal.html" %}
+{% endblock %}

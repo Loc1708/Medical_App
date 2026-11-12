@@ -1,0 +1,23 @@
+{% if error_message %}
+<div class="alert alert-danger" role="alert">{{ error_message }}</div>
+{% endif %}
+{% if account %}
+<p class="text-muted small">Mã tài khoản: {{ account.maTK }} · Mã hồ sơ: {{ account.maHoSo }}</p>
+{% endif %}
+{% if account and account.maTK == current_user.maTK %}
+<div class="alert alert-info">Bạn không thể tự khóa hoặc tự bỏ quyền quản trị của mình.</div>
+{% endif %}
+<form method="post" action="{{ request.path }}{% if modal %}?modal=1{% endif %}"
+      {% if modal %}data-modal-form{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% set registration = false %}
+    {% include "components/account_fields.html" %}
+    <div class="d-flex justify-content-end gap-2 mt-4">
+        {% if modal %}
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+        {% else %}
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin_accounts') }}">Hủy</a>
+        {% endif %}
+        <button class="btn btn-primary">Lưu thay đổi</button>
+    </div>
+</form>

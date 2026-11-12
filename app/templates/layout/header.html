@@ -1,3 +1,19 @@
-<header>
-    <a href="{{ url_for('index') }}">Quản lý phòng mạch tư</a>
+<header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}">
+        <img class="brand-logo" src="{{ url_for('static', filename='images/2.png') }}"
+             alt="Phòng mạch Nhịp Sống — Tận tâm chăm sóc · Đồng hành sức khỏe"
+             width="48" height="48">
+    </a>
+    <div class="header-actions">
+        {% if not (database_unavailable|default(false)) and current_user.is_authenticated %}
+        <div class="text-end"><strong>{{ current_user.hoTen }}</strong><small class="d-block">{{ current_user.role.label }}</small></div>
+        <form action="{{ url_for('logout') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-outline-primary btn-sm">Đăng xuất</button>
+        </form>
+        {% else %}
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('login_view') }}">Đăng nhập</a>
+        <a class="btn btn-primary btn-sm" href="{{ url_for('register') }}">Đăng ký</a>
+        {% endif %}
+    </div>
 </header>

@@ -224,4 +224,3 @@ Remove-Item Env:\DATABASE_URL
 
 Thiết lập SQLite trên chỉ dành cho kiểm tra local, không truy cập TiDB.
 Các bài kiểm tra tài khoản từ chối chạy trên database khác để không xóa dữ liệu thật.
-123

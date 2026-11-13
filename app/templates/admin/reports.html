@@ -1,0 +1,42 @@
+{% extends "layout/base.html" %}
+{% block title %}Thống kê, báo cáo · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <div><h1 class="h3">Thống kê, báo cáo</h1><p class="text-muted mb-0">Doanh thu, tần suất khám và sử dụng thuốc theo tháng.</p></div>
+    <form method="get" class="d-flex gap-2 align-items-end">
+        <div><label class="form-label" for="report-month">Tháng báo cáo</label>
+            <input class="form-control" id="report-month" name="month" type="month" min="1900-01" max="9998-12" required value="{{ selected_month }}"></div>
+        <button class="btn btn-primary text-nowrap">Xem báo cáo</button>
+    </form>
+</div>
+<div class="row g-3 my-3">
+    <div class="col-md-6"><div class="panel"><small class="text-muted">Tổng doanh thu</small><p class="h4 mt-2 mb-0">{{ "{:,.2f}".format(report.total) }} VNĐ</p></div></div>
+    <div class="col-md-6"><div class="panel"><small class="text-muted">Tổng lượt bệnh nhân theo ngày</small><p class="h4 mt-2 mb-0">{{ report.patient_visits }}</p></div></div>
+</div>
+<div id="chart-error" class="alert alert-warning" role="alert" hidden></div>
+<section class="panel mb-4">
+    <h2 class="h5">Báo cáo doanh thu theo tháng — {{ selected_month }}</h2>
+    <p class="text-muted small">Doanh thu từ hóa đơn đã thanh toán theo ngày lập. Số bệnh nhân là số người khác nhau khám hoàn tất mỗi ngày. Tỷ lệ = doanh thu ngày / tổng doanh thu tháng.</p>
+    <div class="report-chart"><canvas id="revenue-chart" aria-label="Biểu đồ doanh thu và tần suất khám" role="img"></canvas></div>
+    <div class="table-responsive mt-4"><table class="table align-middle">
+        <thead><tr><th>STT</th><th>Ngày</th><th class="text-end">Số bệnh nhân</th><th class="text-end">Doanh thu (VNĐ)</th><th class="text-end">Tỷ lệ</th></tr></thead>
+        <tbody>{% for row in report.revenue %}<tr><td>{{ loop.index }}</td><td>{{ row.day.strftime('%d/%m/%Y') }}</td><td class="text-end">{{ row.patients }}</td><td class="text-end">{{ "{:,.2f}".format(row.amount) }}</td><td class="text-end">{{ "{:.2f}".format(row.ratio) }}%</td></tr>{% endfor %}</tbody>
+        <tfoot><tr><th colspan="3">Tổng doanh thu</th><th class="text-end">{{ "{:,.2f}".format(report.total) }}</th><th class="text-end">{{ '100.00%' if report.total else '0.00%' }}</th></tr></tfoot>
+    </table></div>
+</section>
+<section class="panel">
+    <h2 class="h5">Báo cáo sử dụng thuốc — {{ selected_month }}</h2>
+    <p class="text-muted small">Số lượng là tổng lượng kê trên phiếu khám hoàn tất. Số lần dùng là số phiếu khám có thuốc đó; không tính phiếu nháp.</p>
+    {% if report.medicines %}<div class="report-chart"><canvas id="medicine-chart" aria-label="Biểu đồ tần suất sử dụng thuốc" role="img"></canvas></div>{% endif %}
+    <div class="table-responsive mt-4"><table class="table align-middle">
+        <thead><tr><th>STT</th><th>Thuốc</th><th>Đơn vị tính</th><th class="text-end">Số lượng</th><th class="text-end">Số lần dùng</th></tr></thead>
+        <tbody>{% for row in report.medicines %}<tr><td>{{ loop.index }}</td><td>{{ row.name }}</td><td>{{ row.unit }}</td><td class="text-end">{{ row.quantity }}</td><td class="text-end">{{ row.uses }}</td></tr>
+        {% else %}<tr><td colspan="5" class="text-center text-muted py-4">Chưa có dữ liệu sử dụng thuốc trong tháng này.</td></tr>{% endfor %}</tbody>
+    </table></div>
+</section>
+<script id="report-data" type="application/json">{{ chart_data|tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/admin/reports.js') }}"></script>
+{% endblock %}

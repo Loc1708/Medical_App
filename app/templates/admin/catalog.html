@@ -1,0 +1,70 @@
+{% extends "layout/base.html" %}
+{% set heading = 'Quản lý đơn vị thuốc' if unit_mode else 'Quản lý thuốc' %}
+{% set list_endpoint = 'admin_units' if unit_mode else 'admin_medicines' %}
+{% set edit_endpoint = 'admin_unit_edit' if unit_mode else 'admin_medicine_edit' %}
+{% set delete_endpoint = 'admin_unit_delete' if unit_mode else 'admin_medicine_delete' %}
+{% block title %}{{ heading }} · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<h1 class="h3">{{ heading }}</h1>
+<p class="text-muted">{{ 'Quản lý các đơn vị tính dùng trong danh mục thuốc.' if unit_mode else 'Danh mục thuốc, đơn vị tính, đơn giá và số lượng hiện có.' }}</p>
+<section class="panel catalog-panel mt-4">
+    <div class="catalog-toolbar">
+        <form method="get" action="{{ url_for(list_endpoint) }}" data-catalog-search>
+            <label class="visually-hidden" for="catalog-search">Tìm theo tên</label>
+            <input class="form-control form-control-sm" type="search" id="catalog-search"
+                   name="q" maxlength="{{ 50 if unit_mode else 100 }}" value="{{ keyword }}"
+                   placeholder="{{ 'Tìm kiếm theo tên đơn vị…' if unit_mode else 'Tìm kiếm theo tên thuốc…' }}">
+            <noscript><button class="btn btn-sm btn-outline-primary mt-2">Tìm kiếm</button></noscript>
+        </form>
+        <a class="btn btn-outline-primary btn-sm" data-catalog-modal href="{{ url_for(edit_endpoint) }}">
+            + {{ 'THÊM ĐƠN VỊ MỚI' if unit_mode else 'THÊM THUỐC MỚI' }}
+        </a>
+    </div>
+    <div id="catalog-error" class="alert alert-danger mt-3" role="alert" hidden></div>
+    <div data-catalog-results>
+        <div class="table-responsive">
+            <table class="table align-middle catalog-table">
+                <thead><tr><th>STT</th><th>{{ 'MÃ ĐƠN VỊ' if unit_mode else 'MÃ THUỐC' }}</th>
+                    <th>{{ 'TÊN ĐƠN VỊ' if unit_mode else 'TÊN THUỐC' }}</th>
+                    {% if not unit_mode %}<th>ĐƠN VỊ</th><th class="text-end">ĐƠN GIÁ (VNĐ)</th><th class="text-end">SỐ LƯỢNG</th>{% endif %}
+                    <th class="text-end">HÀNH ĐỘNG</th></tr></thead>
+                <tbody>
+                    {% for item in page.items %}
+                    {% set code = item.maDonVi if unit_mode else item.maThuoc %}
+                    <tr>
+                        <td>{{ (page.page - 1) * page.per_page + loop.index }}</td>
+                        <td class="text-nowrap">{{ code }}</td>
+                        <td>{{ item.tenDonVi if unit_mode else item.tenThuoc }}</td>
+                        {% if not unit_mode %}
+                        <td>{{ item.donVi.tenDonVi }}</td>
+                        <td class="text-end">{{ "{:,.0f}".format(item.donGia) }}</td>
+                        <td class="text-end">{{ item.soLuongTon }}</td>
+                        {% endif %}
+                        <td><div class="catalog-actions">
+                            <a class="catalog-icon" data-catalog-modal href="{{ url_for(edit_endpoint, code=code) }}"
+                               aria-label="Sửa {{ code }}" title="Sửa">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5l5 5M4 20l4-1L20 7a2 2 0 0 0-3-3L5 16zM12 4H4v16h16v-8"/></svg>
+                            </a>
+                            <form method="post" action="{{ url_for(delete_endpoint, code=code) }}" data-catalog-delete data-code="{{ code }}">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="q" value="{{ keyword }}">
+                                <button class="catalog-icon" aria-label="Xóa {{ code }}" title="Xóa">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7"/></svg>
+                                </button>
+                            </form>
+                        </div></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{{ 4 if unit_mode else 7 }}" class="text-center text-muted py-5">Không tìm thấy dữ liệu phù hợp.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "components/catalog_pagination.html" %}
+    </div>
+</section>
+<div class="modal fade" id="catalog-modal" tabindex="-1" aria-labelledby="catalog-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content"></div></div>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/admin/catalog.js') }}"></script>{% endblock %}

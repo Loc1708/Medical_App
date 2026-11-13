@@ -1,0 +1,29 @@
+{% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
+<form method="post" action="{{ request.path }}{% if modal %}?modal=1{% endif %}" {% if modal %}data-catalog-form{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="form-label" for="item-code">{{ 'Mã đơn vị' if unit_mode else 'Mã thuốc' }}</label>
+    <input id="item-code" name="{{ 'maDonVi' if unit_mode else 'maThuoc' }}" class="form-control mb-3"
+           maxlength="20" pattern="[a-zA-Z0-9_\-]{1,20}" required
+           value="{{ values.get('maDonVi' if unit_mode else 'maThuoc', '') }}" {% if item %}readonly{% endif %}>
+    <label class="form-label" for="item-name">{{ 'Tên đơn vị' if unit_mode else 'Tên thuốc' }}</label>
+    <input id="item-name" name="{{ 'tenDonVi' if unit_mode else 'tenThuoc' }}" class="form-control mb-3"
+           maxlength="{{ 50 if unit_mode else 100 }}" required value="{{ values.get('tenDonVi' if unit_mode else 'tenThuoc', '') }}">
+    {% if not unit_mode %}
+    {% if not units %}<div class="alert alert-warning">Chưa có đơn vị thuốc. Hãy thêm đơn vị trước khi thêm thuốc.</div>{% endif %}
+    <label class="form-label" for="medicine-unit">Đơn vị tính</label>
+    <select id="medicine-unit" class="form-select mb-3" name="maDonVi" required>
+        <option value="">Chọn đơn vị</option>
+        {% for unit in units %}<option value="{{ unit.maDonVi }}" {% if values.get('maDonVi') == unit.maDonVi %}selected{% endif %}>{{ unit.tenDonVi }}</option>{% endfor %}
+    </select>
+    <label class="form-label" for="medicine-price">Đơn giá (VNĐ)</label>
+    <input id="medicine-price" class="form-control mb-3" name="donGia" type="number" min="0" max="9999999999999.99" step="0.01" required value="{{ values.get('donGia', '') }}">
+    <label class="form-label" for="medicine-stock">Số lượng</label>
+    <input id="medicine-stock" class="form-control mb-3" name="soLuongTon" type="number" min="0" max="999999999" step="1" required value="{{ values.get('soLuongTon', '') }}">
+    {% endif %}
+    <p class="text-muted small">Không thể xóa dữ liệu đã được sử dụng. Mã được giữ nguyên khi sửa.</p>
+    <div class="d-flex justify-content-end gap-2 mt-4">
+        {% if modal %}<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Hủy</button>
+        {% else %}<a class="btn btn-outline-secondary" href="{{ url_for('admin_units' if unit_mode else 'admin_medicines') }}">Hủy</a>{% endif %}
+        <button class="btn btn-primary" {% if not unit_mode and not units %}disabled{% endif %}>Lưu thay đổi</button>
+    </div>
+</form>

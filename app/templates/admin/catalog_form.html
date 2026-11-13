@@ -1,0 +1,8 @@
+{% extends "layout/base.html" %}
+{% block title %}{{ 'Sửa' if item else 'Thêm' }} {{ 'đơn vị thuốc' if unit_mode else 'thuốc' }} · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<section class="panel form-panel">
+    <h1 class="h4">{{ 'Sửa' if item else 'Thêm' }} {{ 'đơn vị thuốc' if unit_mode else 'thuốc' }}</h1>
+    {% include "components/catalog_editor.html" %}
+</section>
+{% endblock %}

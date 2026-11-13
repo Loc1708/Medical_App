@@ -1,0 +1,14 @@
+<div class="catalog-pagination">
+    <small class="text-muted">{{ page.total }} kết quả</small>
+    <nav aria-label="Phân trang danh mục" class="d-flex gap-1 flex-wrap">
+        {% if page.has_prev %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for(list_endpoint, page=page.prev_num, q=keyword) }}">‹ Trước</a>{% endif %}
+        {% for number in page.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=1) %}
+        {% if number %}
+        <a class="btn btn-sm {{ 'btn-primary' if number == page.page else 'btn-outline-secondary' }}"
+           {% if number == page.page %}aria-current="page"{% endif %}
+           href="{{ url_for(list_endpoint, page=number, q=keyword) }}">{{ number }}</a>
+        {% else %}<span class="px-1">…</span>{% endif %}
+        {% endfor %}
+        {% if page.has_next %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for(list_endpoint, page=page.next_num, q=keyword) }}">Sau ›</a>{% endif %}
+    </nav>
+</div>

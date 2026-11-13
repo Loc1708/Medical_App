@@ -1,0 +1,18 @@
+{% extends "layout/base.html" %}
+{% block title %}Quản lý quy định · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<h1 class="h3">Quản lý quy định</h1>
+<p class="text-muted">Cấu hình giới hạn bệnh nhân trong ngày và số tiền khám.</p>
+<section class="panel form-panel">
+    {% if error_message %}<div class="alert alert-danger" role="alert">{{ error_message }}</div>{% endif %}
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label class="form-label" for="maximum">Số bệnh nhân tối đa trong ngày</label>
+        <input class="form-control mb-4" id="maximum" name="maximum" type="number" min="1" max="100000" step="1" required value="{{ values.get('maximum', '') }}">
+        <label class="form-label" for="fee">Tiền khám (VNĐ)</label>
+        <input class="form-control mb-4" id="fee" name="fee" type="number" min="0.01" max="9999999999999.99" step="0.01" required value="{{ values.get('fee', '') }}">
+        <p class="text-muted small">Thay đổi không làm cập nhật tiền khám trên hóa đơn đã lập. Giới hạn tiếp nhận sẽ được dùng ở chức năng danh sách khám khi triển khai.</p>
+        <button class="btn btn-primary" {% if not ready %}disabled{% endif %}>Lưu quy định</button>
+    </form>
+</section>
+{% endblock %}

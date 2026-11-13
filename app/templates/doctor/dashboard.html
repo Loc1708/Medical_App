@@ -1,2 +1,224 @@
-{% extends "layout/role_dashboard.html" %}
-{% block role_content %}<h2 class="h5">Lập phiếu khám</h2>{% endblock %}
+{% extends "layout/base.html" %}
+{% block title %}Lập phiếu khám · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="doctor-page">
+    <div class="page-heading doctor-heading">
+        <div>
+            <span class="eyebrow">KHÔNG GIAN BÁC SĨ</span>
+            <h1 class="h3 mt-2 mb-1">Lập phiếu khám</h1>
+            <p class="text-muted mb-0">Xin chào, {{ current_user.hoTen }}. Tra cứu bệnh nhân và chuẩn bị thông tin khám.</p>
+        </div>
+        <div class="doctor-heading-actions">
+            <button class="btn btn-outline-primary doctor-drafts-button" type="button"
+                    data-toggle-drafts aria-expanded="false" aria-controls="doctor-drafts">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+                    <path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9Z" stroke="currentColor"
+                          stroke-width="1.7" stroke-linejoin="round"/>
+                    <path d="m3.5 7.8 8.5 4.4 8.5-4.4M12 12.2V21M8 5l9 4.5"
+                          stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+                </svg>
+                <span>Bản nháp</span>
+                <span class="doctor-drafts-count" data-drafts-count>0</span>
+            </button>
+            <button class="btn btn-outline-primary doctor-history-button" type="button" data-patient-history>
+                Xem lịch sử khám
+            </button>
+        </div>
+    </div>
+
+    <section class="panel doctor-section doctor-drafts-panel mt-4" id="doctor-drafts"
+             aria-labelledby="doctor-drafts-heading" hidden>
+        <div class="doctor-section-heading">
+            <div>
+                <span class="doctor-step" aria-hidden="true">▱</span>
+                <div>
+                    <h2 class="h5 mb-1" id="doctor-drafts-heading">Bản nháp của tôi</h2>
+                    <p class="text-muted mb-0">Bản nháp được lưu an toàn trên hệ thống và có thể tiếp tục sau khi tải lại trang.</p>
+                </div>
+            </div>
+        </div>
+        <p class="doctor-history-prompt mb-0" data-drafts-empty hidden>Chưa có bản nháp nào.</p>
+        <div class="table-responsive" data-drafts-table hidden>
+            <table class="table align-middle doctor-table mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Ngày khám</th>
+                        <th scope="col">Bệnh nhân</th>
+                        <th scope="col">Triệu chứng</th>
+                        <th scope="col">Số thuốc</th>
+                        <th scope="col">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody data-drafts-rows></tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="doctor-prototype-note mt-4" role="note">
+        <span class="doctor-note-icon" aria-hidden="true">i</span>
+        <p class="mb-0"><strong>Dữ liệu thử nghiệm:</strong> hồ sơ, thuốc và phiếu có nhãn DEMO chỉ để kiểm thử, không phải dữ liệu khám/điều trị thật.</p>
+    </div>
+    <div class="doctor-status mt-3" id="doctor-status" role="status" aria-live="polite" hidden></div>
+
+    <section class="panel doctor-section mt-4" id="patient-search" aria-labelledby="patient-heading">
+        <div class="doctor-section-heading">
+            <div>
+                <span class="doctor-step">01</span>
+                <div>
+                    <h2 class="h5 mb-1" id="patient-heading">Thông tin bệnh nhân</h2>
+                    <p class="text-muted mb-0">Nhập mã bệnh nhân (có thể nhập số, ví dụ 60001) để tra cứu hồ sơ và lịch sử khám.</p>
+                </div>
+            </div>
+        </div>
+        <div class="doctor-search-row">
+            <label class="visually-hidden" for="patient-query">Mã bệnh nhân</label>
+            <input class="form-control" id="patient-query" type="search"
+                   placeholder="Nhập số mã hoặc BN-60001" autocomplete="off">
+            <button class="btn btn-primary" type="button"
+                    data-patient-search>
+                Tìm bệnh nhân
+            </button>
+        </div>
+        <div class="doctor-patient-card" id="patient-card" hidden>
+            <div><span>Mã bệnh nhân</span><strong id="patient-code"></strong></div>
+            <div><span>Họ tên</span><strong id="patient-name"></strong></div>
+            <div><span>Giới tính · Năm sinh</span><strong id="patient-demographics"></strong></div>
+            <div><span>Số điện thoại</span><strong id="patient-phone"></strong></div>
+            <div class="doctor-patient-address"><span>Địa chỉ</span><strong id="patient-address"></strong></div>
+        </div>
+        <div class="doctor-patient-history" id="patient-history" aria-labelledby="history-heading">
+            <div class="doctor-history-heading">
+                <div>
+                    <h3 class="h6 mb-1" id="history-heading">Lịch sử khám</h3>
+                    <p class="text-muted mb-0">Lịch sử chỉ hiển thị sau khi tìm được bệnh nhân.</p>
+                </div>
+            </div>
+            <p class="doctor-history-prompt mb-0" id="patient-history-message">
+                Chưa nhập mã bệnh nhân. Vui lòng nhập mã bệnh nhân để xem danh sách phiếu khám.
+            </p>
+            <div class="table-responsive" id="patient-history-table" hidden>
+                <table class="table align-middle doctor-table mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Ngày khám</th>
+                            <th scope="col">Mã phiếu</th>
+                            <th scope="col">Triệu chứng</th>
+                            <th scope="col">Bác sĩ</th>
+                            <th scope="col">Số thuốc</th>
+                            <th scope="col">Trạng thái</th>
+                            <th scope="col">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="patient-history-rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <section class="panel doctor-section mt-4" id="medicine-search" aria-labelledby="medicine-heading">
+        <div class="doctor-section-heading">
+            <div>
+                <span class="doctor-step">02</span>
+                <div>
+                    <h2 class="h5 mb-1" id="medicine-heading">Tra cứu thuốc</h2>
+                    <p class="text-muted mb-0">Tìm thuốc để thêm vào đơn thuốc.</p>
+                </div>
+            </div>
+            <span class="doctor-outline-badge">Thuốc còn tồn kho</span>
+        </div>
+        <div class="doctor-search-row doctor-medicine-search">
+            <label class="visually-hidden" for="medicine-query">Tên thuốc</label>
+            <input class="form-control" id="medicine-query" type="search"
+                   placeholder="Tìm theo tên thuốc" autocomplete="off">
+            <button class="btn btn-outline-primary" type="button"
+                    data-medicine-search>
+                Tìm thuốc
+            </button>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle doctor-table mb-0">
+                <caption class="visually-hidden">Danh sách thuốc để kê đơn</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Mã thuốc</th>
+                        <th scope="col">Tên thuốc</th>
+                        <th scope="col">Đơn vị</th>
+                        <th scope="col">Số lượng</th>
+                        <th scope="col">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody id="medicine-results">
+                    <tr>
+                        <td colspan="5" class="doctor-table-empty">Nhập ít nhất 2 ký tự để tìm thuốc.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="doctor-workspace-grid mt-4">
+        <section class="panel doctor-section" id="exam-details" aria-labelledby="exam-heading">
+            <div class="doctor-section-heading">
+                <div>
+                    <span class="doctor-step">03</span>
+                    <div>
+                        <h2 class="h5 mb-1" id="exam-heading">Thông tin khám</h2>
+                        <p class="text-muted mb-0">Ghi nhận nội dung khám bệnh.</p>
+                    </div>
+                </div>
+            </div>
+            <label class="form-label" for="exam-date">Ngày khám</label>
+            <p class="doctor-date-value mb-3" id="exam-date" aria-describedby="exam-date-help">
+                {{ exam_date.strftime("%d/%m/%Y") }}
+            </p>
+            <small class="doctor-field-help d-block mb-3" id="exam-date-help">Ngày khám tự động lấy theo ngày hiện tại.</small>
+            <label class="form-label" for="symptoms">Triệu chứng</label>
+            <textarea class="form-control doctor-symptoms" id="symptoms" rows="7"
+                      placeholder="Nhập triệu chứng của bệnh nhân..."></textarea>
+            <small class="doctor-field-help d-block mt-2">Ngày khám được tự động lấy theo ngày hiện tại khi lập phiếu.</small>
+            <small class="doctor-field-help d-block mt-2">Có thể lưu nháp khi thông tin chưa đầy đủ; phiếu chính thức cần có triệu chứng và cách dùng thuốc.</small>
+        </section>
+
+        <section class="panel doctor-section" id="prescription" aria-labelledby="prescription-heading">
+            <div class="doctor-section-heading">
+                <div>
+                    <span class="doctor-step">04</span>
+                    <div>
+                        <h2 class="h5 mb-1" id="prescription-heading">Đơn thuốc</h2>
+                        <p class="text-muted mb-0">Thuốc kê cho bệnh nhân được chọn.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table align-middle doctor-table prescription-table mb-0">
+                    <caption class="visually-hidden">Chi tiết đơn thuốc</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Tên thuốc</th>
+                            <th scope="col">Đơn vị</th>
+                            <th scope="col">Số lượng</th>
+                            <th scope="col">Cách dùng</th>
+                            <th scope="col">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody id="prescription-items">
+                        <tr>
+                            <td colspan="5" class="doctor-table-empty">Chưa có thuốc trong đơn.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="doctor-prescription-actions">
+                <button class="btn btn-outline-primary" type="button"
+                        data-save-draft>
+                    Lưu nháp
+                </button>
+                <button class="btn btn-primary" type="button"
+                        data-save-exam>
+                    Lập phiếu khám
+                </button>
+            </div>
+        </section>
+    </div>
+</div>
+{% endblock %}

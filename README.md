@@ -51,10 +51,11 @@ Medical_App\
   `components` chứa thông báo, khung modal, form tài khoản và ô mật khẩu tái sử dụng.
 - `static`: CSS, JavaScript và hình ảnh.
 
-Đợt hiện tại triển khai tài khoản và hồ sơ liên quan, chưa triển khai nghiệp vụ
-khám, thuốc, thanh toán và báo cáo. Không tạo lại các thư mục `controllers`,
-`models`, `services` của bộ khung cũ. Controller được thể hiện bằng các hàm route
-trong `index.py`, `admin.py`; truy cập dữ liệu ở `dao.py`.
+Đợt hiện tại triển khai tài khoản/hồ sơ và luồng bác sĩ (tra cứu bệnh nhân,
+lịch sử khám, tra cứu thuốc, lưu nháp và lập phiếu). Thanh toán và báo cáo chưa triển khai.
+Không tạo lại các thư mục `controllers`, `models`, `services` của bộ khung cũ.
+Controller được thể hiện bằng các hàm route trong `index.py`, `admin.py`;
+truy cập dữ liệu ở `dao.py`.
 Frontend dùng HTML/Jinja2, Bootstrap 5.0.2 và JavaScript thuần; không có npm build.
 Logo trên header và favicon của các trang dùng chung biểu tượng
 `static\images\2.png`.
@@ -65,8 +66,8 @@ màn hình tài khoản hiện là các view Jinja2 tùy chỉnh để quản l�
 
 `requirements.txt` bao gồm các thư viện trong mẫu lớp: Flask, Flask-Admin,
 Flask-Login, Flask-SQLAlchemy, PyMySQL, Cloudinary, WTForms và các phụ thuộc.
-Giữ Flask-Migrate của dự án cùng SQLAlchemy 2.1.6 đang dùng
-(mẫu lớp dùng 2.1.5). Tệp được lưu UTF-8 để dễ đọc và cập nhật.
+Giữ Flask-Migrate của dự án cùng SQLAlchemy 2.0.57.
+Tệp được lưu UTF-8 để dễ đọc và cập nhật.
 Cloudinary chưa được cấu hình hoặc sử dụng trong đợt tài khoản.
 
 Máy cần có Python. Mở terminal tại gốc repository:
@@ -90,6 +91,28 @@ khởi tạo các bảng và tạo quản trị đầu tiên bằng CLI (không 
 Khi đổi schema cần migration được kiểm tra riêng, không dùng xóa/tạo lại dữ liệu.
 `create-admin` nhập mật khẩu ẩn và yêu cầu xác nhận, không truyền mật khẩu qua tham số CLI.
 Số điện thoại nhân viên có thể bổ sung sau; số điện thoại bệnh nhân bắt buộc.
+
+Sau khi cập nhật code có cột trạng thái phiếu khám, chạy lệnh migration dưới đây
+trên database đã có bảng `PhieuKham`. Lệnh chỉ thêm `trangThai`; các phiếu cũ
+nhận trạng thái `DA_LAP`, không xóa hoặc sửa nội dung hồ sơ:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app upgrade-clinical-schema
+```
+
+Database mới đã có cột này sau `init-db`, nên migration sẽ báo không cần thay đổi.
+Để tạo dữ liệu DEMO cho luồng bác sĩ trên database hiện cấu hình, sau migration, chạy:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app seed-doctor-demo
+```
+
+Lệnh này có thể chạy lặp lại; tạo tổng cộng 11 hồ sơ bệnh nhân kiểm thử
+(bao gồm Nguyễn Khánh Như Quỳnh), tám mặt hàng được ghi rõ là DEMO và một phiếu
+lịch sử có nội dung kiểm thử. Tài khoản bệnh nhân DEMO bị khóa đăng nhập;
+thông tin liên hệ/địa chỉ là giả. Không dùng dữ liệu này cho khám chữa bệnh.
+Lưu nháp có thể bổ sung sau; lập phiếu hoàn chỉnh không giảm tồn kho vì tồn kho
+thuộc quy trình nghiệp vụ của thu ngân.
 
 Mở http://127.0.0.1:5000. Dừng bằng Ctrl+C.
 Lệnh trên bật debug, chỉ dùng cho môi trường development.
@@ -118,7 +141,8 @@ Kết nối TiDB dùng PyMySQL, charset utf8mb4 và TLS có kiểm tra chứng c
 lẫn hostname, sử dụng CA từ certifi. Thiếu mật khẩu khi đã đặt `MYSQL_HOST`
 sẽ báo lỗi, không tự chuyển sang SQLite.
 Database nghiệp vụ hiện dùng là `medical_app`, tách biệt khỏi `sys`.
-Đợt tài khoản chỉ tạo các bảng `TaiKhoan`, `NhanVien`, `BacSi`, `BenhNhan`.
+Model hiện có các bảng tài khoản/hồ sơ và các bảng khám thuốc
+`DonViThuoc`, `Thuoc`, `PhieuKham`, `ChiTietDonThuoc`.
 
 Kiểm tra kết nối (chỉ chạy `SELECT 1`, không tạo bảng):
 
@@ -198,7 +222,8 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
 
 ## Đối chiếu thiết kế trong đợt tài khoản
 
-- Đã có các lớp `TaiKhoan`, `NhanVien`, `BacSi`, `BenhNhan` theo lược đồ PDF.
+- Đã có các lớp tài khoản/hồ sơ `TaiKhoan`, `NhanVien`, `BacSi`, `BenhNhan`
+  và luồng bác sĩ `DonViThuoc`, `Thuoc`, `PhieuKham`, `ChiTietDonThuoc`.
 - Model dùng `Mapped`/`mapped_column` của SQLAlchemy để trình kiểm tra kiểu
   hiểu đúng thuộc tính và quan hệ; vẫn giữ cấu trúc file của mẫu lớp.
   `TaiKhoan` cung cấp trực tiếp các thuộc tính giao tiếp Flask-Login
@@ -206,8 +231,16 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
 - Đã có `TaiKhoan.dangNhap`, `dangXuat`, `doiMatKhau`.
   `doiMatKhau` thay hash trên đối tượng, việc xác thực quyền và commit do DAO/route đảm nhiệm.
 - Bổ sung `TaiKhoan.trangThai` theo xác nhận để khóa/mở tài khoản.
-- Chưa tạo lớp/phương thức giả cho nghiệp vụ ngoài phạm vi đợt này.
-  Các controller/UI khám, thuốc, thanh toán và lớp nghiệp vụ tương ứng triển khai sau.
+- Luồng bác sĩ đã có route/DAO để tra cứu bệnh nhân theo mã, xem lịch sử,
+  tra thuốc, lưu/cập nhật/tiếp tục bản nháp của chính bác sĩ đang đăng nhập,
+  và lập phiếu khám hoàn chỉnh kèm chi tiết đơn thuốc. Bản nháp được cập nhật
+  thành phiếu đã lập thay vì tạo thêm lịch sử trùng lặp; hồ sơ và chi tiết thuốc
+  được lưu trên database cấu hình hiện tại. Biểu mẫu đang làm được tự lưu thành
+  bản nháp trên máy chủ sau khi có bệnh nhân và nội dung thay đổi; nút hình hộp
+  ở đầu trang mở danh sách bản nháp để tiếp tục hoặc xóa, kể cả sau khi tải lại
+  trang. Xóa bản nháp yêu cầu xác nhận và chỉ áp dụng cho bản nháp của bác sĩ
+  đang đăng nhập.
+  Các bảng thanh toán và danh sách khám chưa nằm trong phạm vi model hiện tại.
 - Điểm đã báo để nhóm sửa thiết kế: `NhanVien.capNhatThongTin(quyDinh): QuyDinh`
   không khớp tên thao tác; `HoaDon.inHoaDon(): Double` không khớp việc xuất bản in.
   Chưa triển khai các chữ ký này hay tự đổi chúng trong code.

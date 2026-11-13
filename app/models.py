@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from enum import Enum
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -110,6 +111,7 @@ class BacSi(db.Model):
     maNV: Mapped[int] = mapped_column("MaNV", db.ForeignKey("NhanVien.MaNV"), primary_key=True, autoincrement=False)
     chuyenKhoa: Mapped[str] = mapped_column(db.String(100), nullable=False)
     nhanVien: Mapped[NhanVien] = relationship(back_populates="bacSi")
+    phieuKhams: Mapped[list[PhieuKham]] = relationship(back_populates="bacSi")
 
 
 class BenhNhan(db.Model):
@@ -128,3 +130,62 @@ class BenhNhan(db.Model):
     @property
     def maHienThi(self) -> str:
         return f"BN-{self.maBN:04d}"
+
+    phieuKhams: Mapped[list[PhieuKham]] = relationship(back_populates="benhNhan")
+
+
+class DonViThuoc(db.Model):
+    __tablename__ = "DonViThuoc"
+
+    maDonVi: Mapped[str] = mapped_column("MaDonVi", db.String(20), primary_key=True)
+    tenDonVi: Mapped[str] = mapped_column(db.String(50), nullable=False)
+    thuocs: Mapped[list[Thuoc]] = relationship(back_populates="donVi")
+
+
+class Thuoc(db.Model):
+    __tablename__ = "Thuoc"
+
+    maThuoc: Mapped[str] = mapped_column("MaThuoc", db.String(20), primary_key=True)
+    tenThuoc: Mapped[str] = mapped_column(db.String(100), nullable=False)
+    donGia: Mapped[float] = mapped_column(db.Float, nullable=False)
+    soLuongTon: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    maDonVi: Mapped[str] = mapped_column(
+        "MaDonVi", db.ForeignKey("DonViThuoc.MaDonVi"), nullable=False,
+    )
+    donVi: Mapped[DonViThuoc] = relationship(back_populates="thuocs")
+    chiTietDonThuocs: Mapped[list[ChiTietDonThuoc]] = relationship(back_populates="thuoc")
+
+
+class PhieuKham(db.Model):
+    __tablename__ = "PhieuKham"
+
+    maPhieuKham: Mapped[str] = mapped_column("MaPhieuKham", db.String(36), primary_key=True)
+    ngayKham: Mapped[date] = mapped_column(db.Date, nullable=False)
+    trieuChung: Mapped[str] = mapped_column(db.Text, nullable=False)
+    trangThai: Mapped[str] = mapped_column(
+        db.String(20), nullable=False, default="DA_LAP", server_default="DA_LAP",
+    )
+    maBN: Mapped[int] = mapped_column(
+        "MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False,
+    )
+    maNV: Mapped[int] = mapped_column(
+        "MaNV", db.ForeignKey("BacSi.MaNV"), nullable=False,
+    )
+    benhNhan: Mapped[BenhNhan] = relationship(back_populates="phieuKhams")
+    bacSi: Mapped[BacSi] = relationship(back_populates="phieuKhams")
+    chiTietDonThuocs: Mapped[list[ChiTietDonThuoc]] = relationship(back_populates="phieuKham")
+
+
+class ChiTietDonThuoc(db.Model):
+    __tablename__ = "ChiTietDonThuoc"
+
+    maThuoc: Mapped[str] = mapped_column(
+        "MaThuoc", db.ForeignKey("Thuoc.MaThuoc"), primary_key=True,
+    )
+    maPhieuKham: Mapped[str] = mapped_column(
+        "MaPhieuKham", db.ForeignKey("PhieuKham.MaPhieuKham"), primary_key=True,
+    )
+    soLuong: Mapped[int] = mapped_column(db.Integer, nullable=False)
+    cachDung: Mapped[str] = mapped_column(db.String(255), nullable=False)
+    thuoc: Mapped[Thuoc] = relationship(back_populates="chiTietDonThuocs")
+    phieuKham: Mapped[PhieuKham] = relationship(back_populates="chiTietDonThuocs")

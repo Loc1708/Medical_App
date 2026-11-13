@@ -1,4 +1,5 @@
 import unittest
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 
 from flask import g
@@ -7,7 +8,10 @@ from sqlalchemy.exc import OperationalError
 
 from app.index import app
 from app import dao, db
-from app.models import BacSi, BenhNhan, NhanVien, Role, TaiKhoan
+from app.models import (
+    BacSi, BenhNhan, ChiTietDonThuoc, DonViThuoc, NhanVien, PhieuKham, Role,
+    TaiKhoan, Thuoc,
+)
 
 
 class AuthClient(FlaskClient):
@@ -111,6 +115,304 @@ class AccountTests(unittest.TestCase):
             self.assertIn(role.label, page.get_data(as_text=True))
             for part in ('class="sidebar"', 'class="topbar"', 'class="app-footer"'):
                 self.assertIn(part, page.get_data(as_text=True))
+
+    def test_doctor_dashboard_matches_consultation_mockup_without_fake_records(self):
+        dao.create_account(self.data("doctor_ui", Role.DOCTOR))
+        self.sign_in("doctor_ui")
+
+        response = self.client.get("/dashboard")
+        html = response.get_data(as_text=True)
+
+        self.assertEqual(response.status_code, 200)
+        for label in (
+            "Lập phiếu khám", "Thông tin bệnh nhân", "Tra cứu thuốc",
+            "Thông tin khám", "Đơn thuốc", "Xem lịch sử khám",
+        ):
+            self.assertIn(label, html)
+        self.assertIn("Nhập ít nhất 2 ký tự để tìm thuốc.", html)
+        self.assertIn("Dữ liệu thử nghiệm", html)
+        self.assertNotIn("Nguyễn Văn An", html)
+        self.assertIn(
+            "Chưa nhập mã bệnh nhân. Vui lòng nhập mã bệnh nhân để xem danh sách phiếu khám.",
+            html,
+        )
+        self.assertEqual(html.count("Xem lịch sử khám"), 1)
+        self.assertIn("data-patient-search", html)
+        self.assertIn("data-patient-history", html)
+        self.assertIn("data-save-draft", html)
+        self.assertIn("data-toggle-drafts", html)
+        self.assertIn('id="doctor-drafts"', html)
+        self.assertIn("BN-60001", html)
+        self.assertIn(
+            datetime.now(timezone(timedelta(hours=7))).strftime("%d/%m/%Y"), html
+        )
+        self.assertIn('id="exam-date"', html)
+        self.assertNotIn('id="exam-date" type="date"', html)
+
+    def test_doctor_can_search_patient_medicines_history_and_create_exam(self):
+        doctor = dao.create_account(self.data("doctor_flow", Role.DOCTOR))
+        patient = dao.create_account(self.data("patient_flow", Role.PATIENT))
+        unit = DonViThuoc(maDonVi="UNIT", tenDonVi="Viên")
+        medicine = Thuoc(
+            maThuoc="MED-1", tenThuoc="Thuốc kiểm thử", donGia=1000,
+            soLuongTon=10, donVi=unit,
+        )
+        prior_exam = PhieuKham(
+            maPhieuKham="PRIOR-1", ngayKham=date(2026, 1, 1),
+            trieuChung="Lượt khám kiểm thử trước", benhNhan=patient.benhNhan,
+            bacSi=doctor.nhanVien.bacSi,
+        )
+        db.session.add_all([unit, medicine, prior_exam])
+        db.session.commit()
+        self.sign_in("doctor_flow")
+
+        patient_code = patient.benhNhan.maHienThi
+        found = self.client.get(f"/doctor/api/patients?code={patient_code}")
+        self.assertEqual(found.status_code, 200)
+        self.assertEqual(found.json["patient"]["name"], patient.benhNhan.hoTen)
+        numeric_code = str(patient.benhNhan.maBN)
+        found_by_number = self.client.get(
+            f"/doctor/api/patients?code={numeric_code}"
+        )
+        self.assertEqual(found_by_number.status_code, 200)
+        self.assertEqual(found_by_number.json["patient"]["code"], patient_code)
+        self.assertEqual(
+            self.client.get("/doctor/api/patients?code=BN-999999").status_code, 404
+        )
+        numeric_history = self.client.get(
+            f"/doctor/api/patients/{numeric_code}/history"
+        )
+        self.assertEqual(
+            [row["id"] for row in numeric_history.json["exams"]], ["PRIOR-1"]
+        )
+
+        history = self.client.get(f"/doctor/api/patients/{patient_code}/history")
+        self.assertEqual([row["id"] for row in history.json["exams"]], ["PRIOR-1"])
+        medicines = self.client.get("/doctor/api/medicines?q=kiểm thử")
+        self.assertEqual([row["code"] for row in medicines.json["medicines"]], ["MED-1"])
+
+        dashboard = self.client.get("/dashboard")
+        csrf = dashboard.get_data(as_text=True).split(
+            '<meta name="csrf-token" content="', 1
+        )[1].split('"', 1)[0]
+        saved = self.client.post(
+            "/doctor/api/exams",
+            headers={"X-CSRF-Token": csrf},
+            json={
+                "patient_code": patient_code,
+                "symptoms": "Nội dung phiếu khám kiểm thử",
+                "prescriptions": [{
+                    "medicine_code": "MED-1", "quantity": 2,
+                    "instructions": "Cách dùng kiểm thử",
+                }],
+            },
+        )
+        self.assertEqual(saved.status_code, 201, saved.get_data(as_text=True))
+        self.assertEqual(
+            len(self.client.get(f"/doctor/api/patients/{patient_code}/history").json["exams"]),
+            2,
+        )
+
+    def test_doctor_can_save_resume_update_and_finalize_only_own_draft(self):
+        doctor = dao.create_account(self.data("draft_doctor", Role.DOCTOR))
+        other_doctor = dao.create_account(self.data("other_draft_doctor", Role.DOCTOR))
+        patient = dao.create_account(self.data("draft_patient", Role.PATIENT))
+        unit = DonViThuoc(maDonVi="DRAFT-UNIT", tenDonVi="Viên")
+        medicines = [
+            Thuoc(maThuoc="DRAFT-M1", tenThuoc="Thuốc nháp một", donGia=1000,
+                  soLuongTon=10, donVi=unit),
+            Thuoc(maThuoc="DRAFT-M2", tenThuoc="Thuốc nháp hai", donGia=2000,
+                  soLuongTon=8, donVi=unit),
+        ]
+        db.session.add_all([unit, *medicines])
+        db.session.commit()
+        patient_code = patient.benhNhan.maHienThi
+        self.sign_in("draft_doctor")
+
+        def csrf_for(client):
+            html = client.get("/dashboard").get_data(as_text=True)
+            return html.split('<meta name="csrf-token" content="', 1)[1].split('"', 1)[0]
+
+        def save(client, token, body):
+            return client.post(
+                "/doctor/api/exams",
+                headers={"X-CSRF-Token": token},
+                json=body,
+            )
+
+        first = save(self.client, csrf_for(self.client), {
+            "patient_code": patient_code,
+            "symptoms": "",
+            "status": "NHAP",
+            "prescriptions": [{
+                "medicine_code": "DRAFT-M1", "quantity": 2, "instructions": "",
+            }],
+        })
+        self.assertEqual(first.status_code, 201, first.get_data(as_text=True))
+        draft_id = first.json["exam_id"]
+        draft = db.session.get(PhieuKham, draft_id)
+        self.assertEqual(draft.trangThai, "NHAP")
+        self.assertEqual(draft.trieuChung, "")
+        self.assertEqual([detail.maThuoc for detail in draft.chiTietDonThuocs], ["DRAFT-M1"])
+
+        resumed = self.client.get(f"/doctor/api/exams/{draft_id}")
+        self.assertEqual(resumed.status_code, 200)
+        self.assertEqual(resumed.json["exam"]["patient_code"], patient_code)
+        self.assertEqual(resumed.json["exam"]["prescriptions"][0]["quantity"], 2)
+        draft_list = self.client.get("/doctor/api/drafts")
+        self.assertEqual([item["id"] for item in draft_list.json["drafts"]], [draft_id])
+        self.assertEqual(draft_list.json["drafts"][0]["patient_code"], patient_code)
+        csrf = csrf_for(self.client)
+
+        other_client = app.test_client()
+        self.sign_in("other_draft_doctor", other_client)
+        other_csrf = csrf_for(other_client)
+        self.assertEqual(other_client.get("/doctor/api/drafts").json["drafts"], [])
+        self.assertEqual(other_client.get(f"/doctor/api/exams/{draft_id}").status_code, 404)
+        self.assertEqual(other_client.delete(
+            f"/doctor/api/drafts/{draft_id}",
+            headers={"X-CSRF-Token": other_csrf},
+        ).status_code, 404)
+        self.assertEqual(save(other_client, other_csrf, {
+            "patient_code": patient_code, "symptoms": "Không được sửa",
+            "status": "NHAP", "draft_id": draft_id, "prescriptions": [],
+        }).status_code, 404)
+
+        updated = save(self.client, csrf_for(self.client), {
+            "patient_code": patient_code,
+            "symptoms": "Đã cập nhật bản nháp",
+            "status": "NHAP",
+            "draft_id": draft_id,
+            "prescriptions": [{
+                "medicine_code": "DRAFT-M2", "quantity": 3, "instructions": "",
+            }],
+        })
+        self.assertEqual(updated.status_code, 201, updated.get_data(as_text=True))
+        self.assertEqual(updated.json["exam_id"], draft_id)
+        db.session.expire_all()
+        draft = db.session.get(PhieuKham, draft_id)
+        self.assertEqual(draft.trieuChung, "Đã cập nhật bản nháp")
+        self.assertEqual([detail.maThuoc for detail in draft.chiTietDonThuocs], ["DRAFT-M2"])
+
+        finalized = save(self.client, csrf_for(self.client), {
+            "patient_code": patient_code,
+            "symptoms": "Phiếu đã hoàn chỉnh",
+            "status": "DA_LAP",
+            "draft_id": draft_id,
+            "prescriptions": [{
+                "medicine_code": "DRAFT-M2", "quantity": 3,
+                "instructions": "Cách dùng kiểm thử",
+            }],
+        })
+        self.assertEqual(finalized.status_code, 201, finalized.get_data(as_text=True))
+        self.assertEqual(finalized.json["exam_id"], draft_id)
+        db.session.expire_all()
+        saved_exam = db.session.get(PhieuKham, draft_id)
+        self.assertEqual(saved_exam.trangThai, "DA_LAP")
+        self.assertEqual(saved_exam.trieuChung, "Phiếu đã hoàn chỉnh")
+        self.assertEqual(len(saved_exam.chiTietDonThuocs), 1)
+        self.assertEqual(saved_exam.chiTietDonThuocs[0].maThuoc, "DRAFT-M2")
+        self.assertEqual(medicines[0].soLuongTon, 10)
+        self.assertEqual(medicines[1].soLuongTon, 8)
+
+        deleted = self.client.delete(
+            f"/doctor/api/drafts/{draft_id}",
+            headers={"X-CSRF-Token": csrf},
+        )
+        self.assertEqual(deleted.status_code, 404)
+        self.assertEqual(self.client.delete(
+            f"/doctor/api/drafts/{draft_id}",
+            headers={"X-CSRF-Token": csrf},
+        ).status_code, 404)
+        self.assertEqual(
+            self.client.delete("/doctor/api/drafts/unknown", headers={
+                "X-CSRF-Token": csrf,
+            }).status_code,
+            404,
+        )
+
+        removable = save(self.client, csrf, {
+            "patient_code": patient_code,
+            "symptoms": "Bản nháp cần xóa",
+            "status": "NHAP",
+            "prescriptions": [{
+                "medicine_code": "DRAFT-M1", "quantity": 1, "instructions": "",
+            }],
+        })
+        self.assertEqual(removable.status_code, 201)
+        removable_id = removable.json["exam_id"]
+        removable_response = self.client.delete(
+            f"/doctor/api/drafts/{removable_id}",
+            headers={"X-CSRF-Token": csrf},
+        )
+        self.assertEqual(removable_response.status_code, 200)
+        self.assertIsNone(db.session.get(PhieuKham, removable_id))
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count()).select_from(
+                    ChiTietDonThuoc
+                ).where(ChiTietDonThuoc.maPhieuKham == removable_id)
+            ),
+            0,
+        )
+
+        history = self.client.get(f"/doctor/api/patients/{patient_code}/history")
+        self.assertEqual(len(history.json["exams"]), 1)
+        self.assertEqual(history.json["exams"][0]["status"], "DA_LAP")
+        self.assertFalse(history.json["exams"][0]["can_resume"])
+        self.assertEqual(self.client.get(f"/doctor/api/exams/{draft_id}").status_code, 404)
+        self.assertEqual(self.client.get("/doctor/api/drafts").json["drafts"], [])
+
+    def test_doctor_api_requires_doctor_role_and_csrf_for_writes(self):
+        self.sign_in()
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "test-csrf-token"
+            csrf = session["csrf_token"]
+        self.assertEqual(self.client.get("/doctor/api/medicines?q=test").status_code, 403)
+        self.assertEqual(self.client.get("/doctor/api/drafts").status_code, 403)
+        self.assertEqual(self.client.delete("/doctor/api/drafts/unknown").status_code, 400)
+        self.assertEqual(
+            self.client.post("/doctor/api/exams", json={}).status_code, 400
+        )
+        self.assertEqual(
+            self.client.post(
+                "/doctor/api/exams", headers={"X-CSRF-Token": csrf}, json={}
+            ).status_code,
+            403,
+        )
+
+    def test_doctor_demo_seed_is_repeatable(self):
+        runner = app.test_cli_runner()
+        first = runner.invoke(args=["seed-doctor-demo"])
+        self.assertEqual(first.exit_code, 0, first.output)
+        second = runner.invoke(args=["seed-doctor-demo"])
+        self.assertEqual(second.exit_code, 0, second.output)
+
+        patient_account = db.session.scalar(
+            db.select(TaiKhoan).where(TaiKhoan.tenDangNhap == "demo_quynh_test")
+        )
+        self.assertEqual(patient_account.benhNhan.hoTen, "Nguyễn Khánh Như Quỳnh")
+        self.assertFalse(patient_account.trangThai)
+        self.assertEqual(
+            db.session.scalar(db.select(db.func.count()).select_from(Thuoc)
+                              .where(Thuoc.maThuoc.like("DEMO-%"))),
+            8,
+        )
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count()).select_from(BenhNhan)
+                .join(TaiKhoan).where(TaiKhoan.tenDangNhap.like("demo_patient_%"))
+            ),
+            10,
+        )
+
+    def test_clinical_schema_upgrade_is_idempotent(self):
+        runner = app.test_cli_runner()
+        first = runner.invoke(args=["upgrade-clinical-schema"])
+        second = runner.invoke(args=["upgrade-clinical-schema"])
+        self.assertEqual(first.exit_code, 0, first.output)
+        self.assertEqual(second.exit_code, 0, second.output)
+        self.assertIn("already exists", second.output)
 
     def test_role_changes_keep_previous_profiles(self):
         account = dao.create_account(self.data())
@@ -221,8 +523,14 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertIn("Không thể xử lý dữ liệu", response.get_data(as_text=True))
 
-    def test_model_tables_match_account_schema(self):
-        self.assertEqual(set(db.metadata.tables), {"TaiKhoan", "BenhNhan", "NhanVien", "BacSi"})
+    def test_model_tables_match_schema(self):
+        self.assertEqual(
+            set(db.metadata.tables),
+            {
+                "TaiKhoan", "BenhNhan", "NhanVien", "BacSi",
+                "DonViThuoc", "Thuoc", "PhieuKham", "ChiTietDonThuoc",
+            },
+        )
         self.assertEqual(BacSi.__table__.primary_key.columns.keys(), ["MaNV"])
 
     def test_modal_edit_validates_confirmation_and_preserves_password(self):

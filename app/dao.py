@@ -1,7 +1,15 @@
+from __future__ import annotations
+
+import re
+from datetime import date
+from uuid import uuid4
+
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app import app, db
-from app.models import BacSi, BenhNhan, NhanVien, Role, TaiKhoan
+from app.models import (
+    BacSi, BenhNhan, ChiTietDonThuoc, NhanVien, PhieuKham, Role, TaiKhoan, Thuoc,
+)
 from app.utils import validate_password
 
 
@@ -12,6 +20,111 @@ def authenticate(username: str, password: str):
         db.select(TaiKhoan).where(TaiKhoan.tenDangNhap == username.strip().lower())
     )
     return account if account and account.dangNhap(username, password) else None
+
+
+def find_patient_by_code(code: str) -> BenhNhan | None:
+    match = re.fullmatch(r"(?:BN-)?(\d{1,10})", code.strip(), re.IGNORECASE)
+    if not match:
+        return None
+    return db.session.get(BenhNhan, int(match.group(1)))
+
+
+def search_medicines(keyword: str, *, limit: int = 30) -> list[Thuoc]:
+    keyword = keyword.strip()
+    if not keyword:
+        return []
+    return list(db.session.scalars(
+        db.select(Thuoc)
+        .where(Thuoc.tenThuoc.contains(keyword, autoescape=True), Thuoc.soLuongTon > 0)
+        .order_by(Thuoc.tenThuoc, Thuoc.maThuoc)
+        .limit(limit)
+    ))
+
+
+def patient_exam_history(patient_id: int) -> list[PhieuKham]:
+    return list(db.session.scalars(
+        db.select(PhieuKham)
+        .where(PhieuKham.maBN == patient_id)
+        .order_by(PhieuKham.ngayKham.desc(), PhieuKham.maPhieuKham.desc())
+    ))
+
+
+def find_doctor_draft(exam_id: str, doctor_id: int) -> PhieuKham | None:
+    return db.session.scalar(
+        db.select(PhieuKham).where(
+            PhieuKham.maPhieuKham == exam_id,
+            PhieuKham.maNV == doctor_id,
+            PhieuKham.trangThai == "NHAP",
+        )
+    )
+
+
+def doctor_drafts(doctor_id: int) -> list[PhieuKham]:
+    return list(db.session.scalars(
+        db.select(PhieuKham)
+        .where(
+            PhieuKham.maNV == doctor_id,
+            PhieuKham.trangThai == "NHAP",
+        )
+        .order_by(PhieuKham.ngayKham.desc(), PhieuKham.maPhieuKham.desc())
+    ))
+
+
+def delete_doctor_draft(exam_id: str, doctor_id: int) -> bool:
+    draft = find_doctor_draft(exam_id, doctor_id)
+    if draft is None:
+        return False
+    try:
+        for detail in list(draft.chiTietDonThuocs):
+            db.session.delete(detail)
+        db.session.delete(draft)
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Doctor draft deletion failed.")
+        raise
+    return True
+
+
+def create_exam(
+    patient: BenhNhan,
+    doctor: BacSi,
+    symptoms: str,
+    prescriptions: list[dict],
+    exam_date: date,
+    status: str = "DA_LAP",
+    exam: PhieuKham | None = None,
+) -> PhieuKham:
+    if exam is None:
+        exam = PhieuKham(maPhieuKham=str(uuid4()))
+        db.session.add(exam)
+    else:
+        for detail in list(exam.chiTietDonThuocs):
+            db.session.delete(detail)
+        exam.chiTietDonThuocs.clear()
+
+    exam.ngayKham = exam_date
+    exam.trieuChung = symptoms
+    exam.trangThai = status
+    exam.benhNhan = patient
+    exam.bacSi = doctor
+    for prescription in prescriptions:
+        exam.chiTietDonThuocs.append(ChiTietDonThuoc(
+            thuoc=prescription["medicine"],
+            soLuong=prescription["quantity"],
+            cachDung=prescription["instructions"],
+        ))
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        app.logger.warning("Exam creation rejected by database constraints.")
+        raise ValueError("Phiếu khám hoặc chi tiết đơn thuốc không hợp lệ.") from None
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Exam creation failed.")
+        raise
+    return exam
 
 
 def _update_profile(account: TaiKhoan, data: dict) -> None:

@@ -5,6 +5,10 @@
         <span class="role-badge">{{ current_user.role.label }}</span>
         {% if current_user.role == Role.ADMIN %}
         <a class="nav-item active" href="{{ url_for('admin_accounts') }}">Quản lý tài khoản</a>
+        {% elif current_user.role == Role.DOCTOR %}
+        <a class="nav-item" href="{{ url_for('dashboard') }}#patient-search">Bệnh nhân</a>
+        <a class="nav-item" href="{{ url_for('dashboard') }}#medicine-search">Tra cứu thuốc</a>
+        <a class="nav-item" href="{{ url_for('dashboard') }}#patient-history">Lịch sử khám</a>
         {% else %}
         <a class="nav-item active" href="{{ url_for('dashboard') }}">Tổng quan</a>
         {% endif %}

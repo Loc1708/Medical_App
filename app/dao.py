@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app import app, db
 from app.models import (
-    BacSi, BenhNhan, ChiTietDonThuoc, NhanVien, PhieuKham, Role, TaiKhoan, Thuoc,
+    BacSi, BenhNhan, ChiTietDonThuoc, DanhSachKham, NhanVien, PhieuKham, Role,
+    TaiKhoan, Thuoc,
 )
 from app.utils import validate_password
 
@@ -47,6 +48,41 @@ def patient_exam_history(patient_id: int) -> list[PhieuKham]:
         .where(PhieuKham.maBN == patient_id)
         .order_by(PhieuKham.ngayKham.desc(), PhieuKham.maPhieuKham.desc())
     ))
+
+
+def patient_exam_registrations(patient_id: int) -> list[DanhSachKham]:
+    return list(db.session.scalars(
+        db.select(DanhSachKham)
+        .where(DanhSachKham.maBN == patient_id)
+        .order_by(DanhSachKham.ngayDangKy.desc(), DanhSachKham.maDSKham.desc())
+    ))
+
+
+def register_patient_exam(
+    patient: BenhNhan,
+    *,
+    name: str,
+    gender: str,
+    birth_year: int,
+    address: str,
+) -> DanhSachKham:
+    registration = DanhSachKham(
+        benhNhan=patient,
+        hoTen=name,
+        gioiTinh=gender,
+        namSinh=birth_year,
+        diaChi=address,
+        ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
+        trangThai="CHO_KHAM",
+    )
+    db.session.add(registration)
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Patient exam registration failed.")
+        raise
+    return registration
 
 
 def find_doctor_draft(exam_id: str, doctor_id: int) -> PhieuKham | None:

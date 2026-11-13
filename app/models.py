@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from enum import Enum
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -132,6 +132,24 @@ class BenhNhan(db.Model):
         return f"BN-{self.maBN:04d}"
 
     phieuKhams: Mapped[list[PhieuKham]] = relationship(back_populates="benhNhan")
+    dangKyKhams: Mapped[list[DanhSachKham]] = relationship(back_populates="benhNhan")
+
+
+class DanhSachKham(db.Model):
+    __tablename__ = "DanhSachKham"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    maDSKham: Mapped[int] = mapped_column("MaDSKham", db.Integer, primary_key=True, autoincrement=True)
+    maBN: Mapped[int] = mapped_column("MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False)
+    hoTen: Mapped[str] = mapped_column("HoTen", db.String(100), nullable=False)
+    gioiTinh: Mapped[str] = mapped_column("GioiTinh", db.String(10), nullable=False)
+    namSinh: Mapped[int] = mapped_column("NamSinh", db.Integer, nullable=False)
+    diaChi: Mapped[str] = mapped_column("DiaChi", db.String(255), nullable=False)
+    ngayDangKy: Mapped[datetime] = mapped_column("NgayDangKy", db.DateTime, nullable=False)
+    trangThai: Mapped[str] = mapped_column(
+        "TrangThai", db.String(20), nullable=False, default="CHO_KHAM",
+    )
+    benhNhan: Mapped[BenhNhan] = relationship(back_populates="dangKyKhams")
 
 
 class DonViThuoc(db.Model):

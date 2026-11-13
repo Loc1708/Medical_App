@@ -114,6 +114,17 @@ thông tin liên hệ/địa chỉ là giả. Không dùng dữ liệu này cho 
 Lưu nháp có thể bổ sung sau; lập phiếu hoàn chỉnh không giảm tồn kho vì tồn kho
 thuộc quy trình nghiệp vụ của thu ngân.
 
+Để tạo riêng bảng danh sách đăng ký khám trên database đang cấu hình, chạy:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app create-patient-registration-table
+```
+
+Lệnh này chỉ tạo `DanhSachKham` nếu bảng chưa tồn tại. Khi bệnh nhân gửi form
+đăng ký, thông tin họ tên, giới tính, năm sinh và địa chỉ được lưu kèm mã hồ sơ,
+thời điểm đăng ký và trạng thái `CHO_KHAM`; hồ sơ gốc trong `BenhNhan` không bị
+thay đổi.
+
 Mở http://127.0.0.1:5000. Dừng bằng Ctrl+C.
 Lệnh trên bật debug, chỉ dùng cho môi trường development.
 

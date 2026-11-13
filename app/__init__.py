@@ -103,6 +103,25 @@ def init_db() -> None:
     click.echo("Tables missing from the current models are ready.")
 
 
+@app.cli.command("create-patient-registration-table")
+def create_patient_registration_table() -> None:
+    """Create only the patient exam registration table if it is missing."""
+    from sqlalchemy import inspect
+    from app.models import DanhSachKham
+
+    existing_tables = set(inspect(db.engine).get_table_names())
+    if "BenhNhan" not in existing_tables:
+        raise click.ClickException("BenhNhan is missing; run init-db first.")
+    try:
+        db.metadata.create_all(bind=db.engine, tables=[DanhSachKham.__table__])
+    except SQLAlchemyError:
+        app.logger.exception("Patient registration table creation failed.")
+        raise click.ClickException(
+            "Could not create DanhSachKham; inspect the database before retrying."
+        ) from None
+    click.echo("DanhSachKham is ready.")
+
+
 @app.cli.command("upgrade-clinical-schema")
 def upgrade_clinical_schema() -> None:
     """Add the draft/final status column without changing existing exam rows."""

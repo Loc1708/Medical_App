@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask import abort, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user, login_required, login_user
@@ -74,14 +74,64 @@ def dashboard():
         clinic_timezone = timezone(timedelta(hours=7))
         exam_date = datetime.now(clinic_timezone).date()
         return render_template("doctor/dashboard.html", exam_date=exam_date)
+    if current_user.role == Role.PATIENT:
+        return _render_patient_dashboard()
     template = {
-        Role.PATIENT: "patient/dashboard.html",
         Role.NURSE: "nurse/dashboard.html",
         Role.CASHIER: "cashier/dashboard.html",
     }.get(current_user.role)
     if template is None:
         abort(403)
     return render_template(template)
+
+
+def _render_patient_dashboard(registration_values=None, status: int = 200):
+    patient = current_user.benhNhan
+    if patient is None:
+        abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
+    return render_template(
+        "patient/dashboard.html",
+        registrations=dao.patient_exam_registrations(patient.maBN),
+        registration_values=registration_values or {},
+    ), status
+
+
+@app.post("/patient/exam-registrations")
+@login_required
+@roles_required(Role.PATIENT)
+def patient_register_exam():
+    patient = current_user.benhNhan
+    if patient is None:
+        abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
+
+    name = request.form.get("hoTen", "").strip()
+    gender = request.form.get("gioiTinh", "")
+    address = request.form.get("diaChi", "").strip()
+    try:
+        birth_year = int(request.form.get("namSinh", ""))
+    except ValueError:
+        birth_year = 0
+
+    if not name or len(name) > 100:
+        flash("Họ tên bắt buộc và tối đa 100 ký tự.", "danger")
+    elif gender not in {"Nam", "Nữ", "Khác"}:
+        flash("Vui lòng chọn giới tính hợp lệ.", "danger")
+    elif not 1900 <= birth_year <= date.today().year:
+        flash("Năm sinh phải từ 1900 đến năm hiện tại.", "danger")
+    elif not address or len(address) > 255:
+        flash("Địa chỉ bắt buộc và tối đa 255 ký tự.", "danger")
+    else:
+        dao.register_patient_exam(
+            patient,
+            name=name,
+            gender=gender,
+            birth_year=birth_year,
+            address=address,
+        )
+        flash("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", "success")
+        return redirect(url_for("dashboard"))
+
+    return _render_patient_dashboard(request.form, status=400)
 
 
 @app.get("/doctor/api/patients")

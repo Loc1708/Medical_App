@@ -1,2 +1,86 @@
-{% extends "layout/role_dashboard.html" %}
-{% block role_content %}<h2 class="h5">Đăng ký khám và lịch sử khám</h2>{% endblock %}
+{% extends "layout/base.html" %}
+{% block title %}Đăng ký khám · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">DÀNH CHO BỆNH NHÂN</span>
+        <h1 class="h3 mt-2">Đăng ký khám</h1>
+        <p class="text-muted mb-0">Kiểm tra thông tin cá nhân trước khi đăng ký khám.</p>
+    </div>
+</div>
+
+<section class="panel form-panel mt-4" aria-labelledby="patient-registration-heading">
+    <h2 class="h5 mb-1" id="patient-registration-heading">Thông tin bệnh nhân</h2>
+    <p class="text-muted mb-4">Thông tin được điền sẵn từ hồ sơ tài khoản và sẽ được lưu cùng lượt đăng ký.</p>
+
+    {% set values = registration_values|default({}) %}
+    <form method="post" action="{{ url_for('patient_register_exam') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="patient-name">Họ tên</label>
+                <input class="form-control" id="patient-name" name="hoTen" type="text"
+                       maxlength="100" autocomplete="name"
+                       value="{{ values.get('hoTen', current_user.benhNhan.hoTen) }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="patient-gender">Giới tính</label>
+                <select class="form-select" id="patient-gender" name="gioiTinh" required>
+                    <option value="">Chọn giới tính</option>
+                    {% for gender in ['Nam', 'Nữ', 'Khác'] %}
+                    <option value="{{ gender }}"
+                            {% if values.get('gioiTinh', current_user.benhNhan.gioiTinh) == gender %}selected{% endif %}>
+                        {{ gender }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="patient-birth-year">Năm sinh</label>
+                <input class="form-control" id="patient-birth-year" name="namSinh"
+                       type="number" min="1900" max="2100"
+                       value="{{ values.get('namSinh', current_user.benhNhan.namSinh) }}" required>
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="patient-address">Địa chỉ</label>
+                <input class="form-control" id="patient-address" name="diaChi" type="text"
+                       maxlength="255" autocomplete="street-address"
+                       value="{{ values.get('diaChi', current_user.benhNhan.diaChi) }}" required>
+            </div>
+        </div>
+        <div class="mt-4">
+            <button class="btn btn-primary" type="submit">Đăng ký khám</button>
+        </div>
+    </form>
+</section>
+
+<section class="panel form-panel mt-4" id="my-registrations" aria-labelledby="patient-registrations-heading">
+    <h2 class="h5 mb-3" id="patient-registrations-heading">Danh sách đăng ký khám của tôi</h2>
+    <div class="table-responsive">
+        <table class="table align-middle mb-0">
+            <thead>
+                <tr>
+                    <th scope="col">Mã đăng ký</th>
+                    <th scope="col">Ngày đăng ký</th>
+                    <th scope="col">Họ tên</th>
+                    <th scope="col">Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for registration in registrations %}
+                <tr>
+                    <td>DK-{{ "%05d"|format(registration.maDSKham) }}</td>
+                    <td>{{ registration.ngayDangKy.strftime("%d/%m/%Y %H:%M") }}</td>
+                    <td>{{ registration.hoTen }}</td>
+                    <td><span class="role-badge">Chờ khám</span></td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td class="text-muted text-center py-4" colspan="4">Bạn chưa có lượt đăng ký khám nào.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

@@ -4,13 +4,14 @@ from unittest.mock import patch
 
 from flask import g
 from flask.testing import FlaskClient
+from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
 
 from app.index import app
 from app import dao, db
 from app.models import (
-    BacSi, BenhNhan, ChiTietDonThuoc, DonViThuoc, NhanVien, PhieuKham, Role,
-    TaiKhoan, Thuoc,
+    BacSi, BenhNhan, ChiTietDonThuoc, DanhSachKham, DonViThuoc, NhanVien,
+    PhieuKham, Role, TaiKhoan, Thuoc,
 )
 
 
@@ -77,6 +78,64 @@ class AccountTests(unittest.TestCase):
         self.assertIsNone(account.nhanVien)
         self.assertNotEqual(account.matKhau, self.password)
         self.assertTrue(account.dangNhap("patient", self.password))
+
+    def test_patient_can_register_exam_and_view_own_registration(self):
+        patient = dao.create_account(self.data("registered_patient"))
+        self.sign_in("registered_patient")
+
+        page = self.client.get("/dashboard")
+        html = page.get_data(as_text=True)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn('action="/patient/exam-registrations"', html)
+        self.assertIn("Danh sách đăng ký khám của tôi", html)
+
+        response = self.post("/patient/exam-registrations", {
+            "hoTen": "Tên khi đăng ký",
+            "gioiTinh": "Nữ",
+            "namSinh": "1998",
+            "diaChi": "Địa chỉ khi đăng ký",
+        })
+        self.assertEqual(response.status_code, 302)
+
+        registration = db.session.scalar(db.select(DanhSachKham))
+        self.assertIsNotNone(registration)
+        self.assertEqual(registration.maBN, patient.benhNhan.maBN)
+        self.assertEqual(registration.hoTen, "Tên khi đăng ký")
+        self.assertEqual(registration.gioiTinh, "Nữ")
+        self.assertEqual(registration.namSinh, 1998)
+        self.assertEqual(registration.diaChi, "Địa chỉ khi đăng ký")
+        self.assertEqual(registration.trangThai, "CHO_KHAM")
+
+        page = self.client.get("/dashboard")
+        html = page.get_data(as_text=True)
+        self.assertIn("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", html)
+        self.assertIn("Tên khi đăng ký", html)
+        self.assertEqual(len(dao.patient_exam_registrations(patient.benhNhan.maBN)), 1)
+
+    def test_patient_exam_registration_validates_data_and_requires_patient(self):
+        dao.create_account(self.data("registration_patient"))
+        self.sign_in("registration_patient")
+
+        invalid = self.post("/patient/exam-registrations", {
+            "hoTen": "Tên hợp lệ",
+            "gioiTinh": "Nam",
+            "namSinh": "2200",
+            "diaChi": "Địa chỉ hợp lệ",
+        })
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn("Năm sinh phải từ 1900 đến năm hiện tại.", invalid.get_data(as_text=True))
+        self.assertEqual(db.session.scalar(db.select(db.func.count()).select_from(DanhSachKham)), 0)
+
+        dao.create_account(self.data("registration_doctor", Role.DOCTOR))
+        doctor_client = app.test_client()
+        self.sign_in("registration_doctor", client=doctor_client)
+        forbidden = self.post("/patient/exam-registrations", {
+            "hoTen": "Tên hợp lệ",
+            "gioiTinh": "Nam",
+            "namSinh": "2000",
+            "diaChi": "Địa chỉ hợp lệ",
+        }, client=doctor_client)
+        self.assertEqual(forbidden.status_code, 403)
 
     def test_csrf_required_for_all_mutations(self):
         self.assertEqual(self.client.post("/register", data=self.form()).status_code, 400)
@@ -529,10 +588,21 @@ class AccountTests(unittest.TestCase):
             {
                 "TaiKhoan", "BenhNhan", "NhanVien", "BacSi",
                 "DonViThuoc", "Thuoc", "PhieuKham", "ChiTietDonThuoc",
-                "HoaDon", "QuyDinh",
+                "HoaDon", "QuyDinh", "DanhSachKham",
             },
         )
         self.assertEqual(BacSi.__table__.primary_key.columns.keys(), ["MaNV"])
+
+    def test_patient_registration_table_command_is_idempotent(self):
+        DanhSachKham.__table__.drop(db.engine, checkfirst=True)
+        runner = app.test_cli_runner()
+
+        first = runner.invoke(args=["create-patient-registration-table"])
+        second = runner.invoke(args=["create-patient-registration-table"])
+
+        self.assertEqual(first.exit_code, 0, first.output)
+        self.assertEqual(second.exit_code, 0, second.output)
+        self.assertIn("DanhSachKham", inspect(db.engine).get_table_names())
 
     def test_modal_edit_validates_confirmation_and_preserves_password(self):
         account = dao.create_account(self.data())

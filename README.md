@@ -169,6 +169,17 @@ thông tin liên hệ/địa chỉ là giả. Không dùng dữ liệu này cho 
 Lưu nháp có thể bổ sung sau; lập phiếu hoàn chỉnh không giảm tồn kho vì tồn kho
 thuộc quy trình nghiệp vụ của thu ngân.
 
+Để tạo riêng bảng danh sách đăng ký khám trên database đang cấu hình, chạy:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app create-patient-registration-table
+```
+
+Lệnh này chỉ tạo `DanhSachKham` nếu bảng chưa tồn tại. Khi bệnh nhân gửi form
+đăng ký, thông tin họ tên, giới tính, năm sinh và địa chỉ được lưu kèm mã hồ sơ,
+thời điểm đăng ký và trạng thái `CHO_KHAM`; hồ sơ gốc trong `BenhNhan` không bị
+thay đổi.
+
 Mở http://127.0.0.1:5000. Dừng bằng Ctrl+C.
 Lệnh trên bật debug, chỉ dùng cho môi trường development.
 
@@ -197,7 +208,8 @@ lẫn hostname, sử dụng CA từ certifi. Thiếu mật khẩu khi đã đặ
 sẽ báo lỗi, không tự chuyển sang SQLite.
 Database nghiệp vụ hiện dùng là `medical_app`, tách biệt khỏi `sys`.
 Model hiện có các bảng tài khoản/hồ sơ và các bảng khám thuốc
-`DonViThuoc`, `Thuoc`, `PhieuKham`, `ChiTietDonThuoc`.
+`DonViThuoc`, `Thuoc`, `PhieuKham`, `ChiTietDonThuoc`, cùng
+`DanhSachKham` cho đăng ký khám, `HoaDon` và `QuyDinh` cho quản trị/báo cáo.
 
 Kiểm tra kết nối (chỉ chạy `SELECT 1`, không tạo bảng):
 
@@ -242,7 +254,7 @@ Thư mục `.venv`, `instance`, các tệp `.env` và Python cache được Git 
 - Role/trạng thái được đọc lại từ CSDL mỗi request. Các thao tác ghi có CSRF token,
   kiểm tra đầu vào và transaction; không cho phép chỉ dựa vào menu để kiểm soát quyền.
 - Giao diện có header, sidebar, footer chung và thư mục riêng theo từng role.
-  Các trang ngoài quản trị hiện hiển thị rõ chức năng nghiệp vụ chưa triển khai,
+  Các trang y tá/thu ngân hiện hiển thị rõ chức năng nghiệp vụ chưa triển khai,
   không có nút giả hoặc thông báo thành công cho thao tác chưa thực hiện.
 
 Tài khoản quản trị khởi tạo riêng cho máy này có thông tin trong
@@ -295,13 +307,15 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
   ở đầu trang mở danh sách bản nháp để tiếp tục hoặc xóa, kể cả sau khi tải lại
   trang. Xóa bản nháp yêu cầu xác nhận và chỉ áp dụng cho bản nháp của bác sĩ
   đang đăng nhập.
-  Model hóa đơn đã ánh xạ bảng thật để truy vấn báo cáo; luồng thu ngân và
-  danh sách khám chưa nằm trong phạm vi code hiện tại.
+  Model hóa đơn đã ánh xạ bảng thật để truy vấn báo cáo. Bệnh nhân có thể
+  đăng ký và xem các lượt đăng ký của mình; luồng thu ngân và xử lý danh sách
+  khám của y tá chưa nằm trong phạm vi code hiện tại.
 - Điểm đã báo để nhóm sửa thiết kế: `NhanVien.capNhatThongTin(quyDinh): QuyDinh`
   không khớp tên thao tác; `HoaDon.inHoaDon(): Double` không khớp việc xuất bản in.
   Chưa triển khai các chữ ký này hay tự đổi chúng trong code.
 - `BenhNhan.dangKyKham()` trong sơ đồ là đăng ký lượt khám, không phải đăng ký tài khoản.
-  Chức năng đó sẽ làm trong đợt danh sách khám, không gán nhầm vào `/register`.
+  Luồng đăng ký lượt khám dùng `/patient/exam-registrations`, không gán nhầm
+  vào `/register`. Giới hạn tiếp nhận chưa áp dụng vào luồng đăng ký này.
 
 ## Kiểm tra
 

@@ -325,7 +325,21 @@ def doctor_create_exam():
         message="Đã lưu bản nháp." if status == "NHAP" else "Đã lập phiếu khám.",
     ), 201
 
-
+@app.route('/cashier/api/dashboard', methods=['get'])
+@roles_required(Role.CASHIER)
+def cashier_search_patient():
+    code = request.args.get('kw', None)
+    
+    patient = dao.find_patient_by_code(code)
+    if patient is None:
+            return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
+    return jsonify(patients=[{
+        "code": patient.maHienThi,
+        "name": patient.hoTen,
+        "gender": patient.gioiTinh,
+        "birth_year": patient.namSinh,
+    }])
+        
 @app.errorhandler(SQLAlchemyError)
 def database_error(_error):
     db.session.rollback()

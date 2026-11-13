@@ -81,7 +81,7 @@ if (doctorStatus) {
         if (draftDirty && selectedPatientCode) {
             window.clearTimeout(autosaveTimer);
             if (!autosaveRequestActive) {
-                autosaveInFlight = saveExam(null, "NHAP", {silent: true});
+                autosaveInFlight = saveExam(null, "NHAP", { silent: true });
             }
         }
         const discardedDraft = currentDraftId !== null;
@@ -441,7 +441,7 @@ if (doctorStatus) {
             autosaveInFlight = autosaveInFlight.then(() => {
                 if (!draftDirty) return true;
                 autosaveRequestActive = true;
-                return saveExam(null, "NHAP", {silent: true}).finally(() => {
+                return saveExam(null, "NHAP", { silent: true }).finally(() => {
                     autosaveRequestActive = false;
                 });
             });
@@ -483,7 +483,7 @@ if (doctorStatus) {
             draftsButton.classList.toggle("doctor-drafts-open", isOpening);
             loadDoctorDrafts();
             if (isOpening) {
-                draftsPanel.scrollIntoView({block: "start", behavior: "smooth"});
+                draftsPanel.scrollIntoView({ block: "start", behavior: "smooth" });
             }
             return;
         }
@@ -564,7 +564,7 @@ if (doctorStatus) {
         if (saveExamButton) saveExam(saveExamButton, "DA_LAP");
     });
 
-    async function saveExam(button, status, {silent = false, keepalive = false} = {}) {
+    async function saveExam(button, status, { silent = false, keepalive = false } = {}) {
         if (status === "DA_LAP" || (status === "NHAP" && !silent)) {
             window.clearTimeout(autosaveTimer);
             await autosaveInFlight;
@@ -678,7 +678,7 @@ if (doctorStatus) {
         const button = event.target.closest("[data-doctor-prototype]");
         if (!button) return;
         showDoctorStatus(button.dataset.doctorPrototype);
-        doctorStatus.scrollIntoView({block: "nearest", behavior: "smooth"});
+        doctorStatus.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
 }
 
@@ -690,7 +690,7 @@ if (modalElement) {
     function showError(message) {
         errorBox.textContent = message;
         errorBox.hidden = false;
-        errorBox.scrollIntoView({block: "nearest"});
+        errorBox.scrollIntoView({ block: "nearest" });
     }
     document.addEventListener("click", async event => {
         const link = event.target.closest("[data-account-modal]");
@@ -727,7 +727,7 @@ if (modalElement) {
         button.disabled = true;
         errorBox.hidden = true;
         try {
-            const response = await fetch(form.action, {method: "POST", body: new FormData(form)});
+            const response = await fetch(form.action, { method: "POST", body: new FormData(form) });
             if (response.redirected) {
                 window.location.assign(response.url);
             } else if (response.status === 204) {
@@ -735,7 +735,7 @@ if (modalElement) {
             } else if (response.status === 422) {
                 content.innerHTML = await response.text();
                 updateRoleFields(content);
-                content.querySelector("[role='alert']")?.scrollIntoView({block: "nearest"});
+                content.querySelector("[role='alert']")?.scrollIntoView({ block: "nearest" });
             } else {
                 throw new Error("Không lưu được tài khoản. Vui lòng kiểm tra kết quả trước khi thử lại.");
             }
@@ -747,4 +747,48 @@ if (modalElement) {
             delete form.dataset.saving;
         }
     });
+}
+
+function searchPatientByCode() {
+    // 1. Lấy từ khóa từ ô input
+    let kw = document.getElementById('kw').value.trim();
+    let list = document.getElementById('list');
+
+    if (!kw) {
+        list.innerHTML = '';
+        list.classList.add('d-none');
+        return;
+    }
+    fetch(`/cashier/api/dashboard?kw=${encodeURIComponent(kw)}`)
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => {
+                    throw new Error(err.error);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            let patients = data.patients || [];
+
+            if (patients.length > 0) {
+                let html = '';
+
+                patients.forEach(p => {
+                    html += `
+                        <li class="list-group-item list-group-item-action"
+                            style="cursor: pointer;"
+                            onclick="selectPatient('${p.code}', '${p.name}')">
+                            <strong>${p.name}</strong>
+                            <small class="text-muted">(${p.code})</small>
+                        </li>`;
+                });
+                list.innerHTML = html;
+                list.classList.remove('d-none');
+            }
+        })
+        .catch(err => {
+            list.innerHTML = `<li class="list-group-item text-danger">${err.message}</li>`;
+            list.classList.remove('d-none');
+        });
 }

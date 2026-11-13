@@ -309,6 +309,54 @@ def create_admin(username: str, password: str, name: str, phone: str) -> None:
     click.echo("Administrator created.")
 
 
+@app.cli.command("seed-admin-demo")
+def seed_admin_demo() -> None:
+    """Initialize approved rules and three labeled medicine samples, without overwriting data."""
+    from decimal import Decimal
+    from app.models import DonViThuoc, QuyDinh, Thuoc
+
+    try:
+        rules = (
+            ("TIEN_KHAM", "Tiền khám", Decimal("100000")),
+            ("SO_BENH_NHAN_TOI_DA", "Số bệnh nhân tối đa trong ngày", Decimal("40")),
+        )
+        for code, name, value in rules:
+            if db.session.get(QuyDinh, code) is None:
+                rule = QuyDinh()
+                rule.maQD, rule.tenQuyDinh, rule.giaTri = code, name, value
+                db.session.add(rule)
+        for code, name in (("SAMPLE-VIEN", "Viên"), ("SAMPLE-CHAI", "Chai"), ("SAMPLE-GOI", "Gói")):
+            unit = db.session.get(DonViThuoc, code)
+            if unit is None:
+                unit = DonViThuoc()
+                unit.maDonVi, unit.tenDonVi = code, name
+                db.session.add(unit)
+            elif unit.tenDonVi != name:
+                raise ValueError(f"Mã {code} đã được sử dụng cho đơn vị khác.")
+        for code, name, price, unit in (
+            ("SAMPLE-T001", "MẪU - Viên thử nghiệm (không dùng điều trị)", 5000, "SAMPLE-VIEN"),
+            ("SAMPLE-T002", "MẪU - Dung dịch thử nghiệm (không dùng điều trị)", 25000, "SAMPLE-CHAI"),
+            ("SAMPLE-T003", "MẪU - Gói thử nghiệm (không dùng điều trị)", 45000, "SAMPLE-GOI"),
+        ):
+            medicine = db.session.get(Thuoc, code)
+            if medicine is None:
+                medicine = Thuoc()
+                medicine.maThuoc, medicine.tenThuoc, medicine.donGia = code, name, price
+                medicine.soLuongTon, medicine.maDonVi = 10, unit
+                db.session.add(medicine)
+            elif medicine.tenThuoc != name:
+                raise ValueError(f"Mã {code} đã được sử dụng cho thuốc khác.")
+        db.session.commit()
+    except ValueError as error:
+        db.session.rollback()
+        raise click.ClickException(str(error)) from error
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Admin sample initialization failed.")
+        raise click.ClickException("Không khởi tạo được dữ liệu mẫu; xem log ứng dụng.") from None
+    click.echo("Rules and three sample medicines ready; existing data was not overwritten.")
+
+
 @app.cli.command("migrate-account-ids")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
 def migrate_account_ids_command(maintenance: bool) -> None:

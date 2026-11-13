@@ -529,6 +529,7 @@ class AccountTests(unittest.TestCase):
             {
                 "TaiKhoan", "BenhNhan", "NhanVien", "BacSi",
                 "DonViThuoc", "Thuoc", "PhieuKham", "ChiTietDonThuoc",
+                "HoaDon", "QuyDinh",
             },
         )
         self.assertEqual(BacSi.__table__.primary_key.columns.keys(), ["MaNV"])

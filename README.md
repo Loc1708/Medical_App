@@ -20,6 +20,9 @@ Medical_App\
 │   │   ├── css\
 │   │   ├── images\
 │   │   └── js\
+│   │       └── admin\
+│   │           ├── catalog.js
+│   │           └── reports.js
 │   └── templates\
 │       ├── index.html
 │       ├── auth\
@@ -45,24 +48,76 @@ Medical_App\
 - `app\models.py`: khai báo các model và quan hệ CSDL.
 - `app\dao.py`: truy vấn, thêm, sửa và xóa dữ liệu.
 - `app\utils.py`: hàm tính toán và tiện ích dùng chung.
-- `app\admin.py`: các route quản trị tài khoản.
+- `app\admin.py`: các route quản trị tài khoản, thuốc, đơn vị, quy định và báo cáo.
 - `app\migration.py`: chuyển khóa UUID cũ sang số nguyên, giữ bảng dự phòng.
 - `templates`: giao diện Jinja2; `layout` chứa bố cục dùng chung,
   `components` chứa thông báo, khung modal, form tài khoản và ô mật khẩu tái sử dụng.
 - `static`: CSS, JavaScript và hình ảnh.
 
 Đợt hiện tại triển khai tài khoản/hồ sơ và luồng bác sĩ (tra cứu bệnh nhân,
-lịch sử khám, tra cứu thuốc, lưu nháp và lập phiếu). Thanh toán và báo cáo chưa triển khai.
+lịch sử khám, tra cứu thuốc, lưu nháp và lập phiếu), quản lý thuốc/đơn vị,
+quy định và báo cáo tháng. Luồng thanh toán chưa triển khai trong code hiện tại.
 Không tạo lại các thư mục `controllers`, `models`, `services` của bộ khung cũ.
 Controller được thể hiện bằng các hàm route trong `index.py`, `admin.py`;
 truy cập dữ liệu ở `dao.py`.
 Frontend dùng HTML/Jinja2, Bootstrap 5.0.2 và JavaScript thuần; không có npm build.
 Logo trên header và favicon của các trang dùng chung biểu tượng
 `static\images\2.png`.
-Chart.js sẽ được dùng khi triển khai báo cáo, Flask-Admin đã có trong dependencies;
+Chart.js 4.4.1 qua CDN được dùng cho báo cáo, Flask-Admin đã có trong dependencies;
 màn hình tài khoản hiện là các view Jinja2 tùy chỉnh để quản lý đồng bộ hồ sơ.
 
 ## Cài đặt và chạy local
+
+### Cập nhật chức năng quản trị thuốc, quy định và báo cáo
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app init-db
+.\.venv\Scripts\python.exe -m flask --app app.index:app seed-admin-demo
+```
+
+`init-db` chỉ tạo bảng chưa tồn tại (đợt này bổ sung `QuyDinh`), không sửa bảng cũ.
+`seed-admin-demo` tạo quy định ban đầu 40 bệnh nhân/ngày và tiền khám 100000 VNĐ,
+3 đơn vị mẫu và 3 thuốc mã `SAMPLE-T001`–`SAMPLE-T003` có tên đánh dấu dữ liệu mẫu.
+Lệnh không ghi đè giá trị/thuốc đã có và không tạo hóa đơn hoặc bệnh nhân giả.
+Nếu nhóm dùng chung TiDB, chỉ cần một người khởi tạo; không cần chạy lại mỗi lần pull.
+
+Các trang chỉ dành cho ADMIN:
+- `/admin/medicines`: tìm theo tên khi gõ, phân trang, thêm/sửa qua modal và xóa có xác nhận.
+- `/admin/units`: thêm/xóa/sửa/tìm các đơn vị tính.
+- `/admin/regulations`: cập nhật số bệnh nhân tối đa và tiền khám trong cùng transaction.
+- `/admin/reports?month=2026-11`: bảng và biểu đồ tháng được chọn.
+
+Mã thuốc/đơn vị nhập khi tạo, không thay đổi khi sửa. Thuốc đã nằm trong đơn thuốc
+(kể cả nháp) và đơn vị còn thuốc tham chiếu không được xóa để giữ lịch sử.
+JavaScript danh mục nằm ở `static\js\admin\catalog.js`; biểu đồ ở
+`static\js\admin\reports.js`, không thêm logic mới vào `main.js`.
+
+### Cách tính báo cáo và ánh xạ thiết kế
+
+Báo cáo truy vấn SQL theo khoảng đầu tháng đến trước đầu tháng kế tiếp:
+- Doanh thu: tổng `TienKham + TienThuoc` trên hóa đơn `TrangThai = DA_THANH_TOAN`,
+  nhóm theo ngày của `NgayLap` (thời gian lưu trong CSDL). Không tính hóa đơn chưa thanh toán.
+- Số bệnh nhân: đếm bệnh nhân khác nhau trên phiếu `DA_LAP` mỗi ngày `ngayKham`.
+  Một bệnh nhân khám ở nhiều ngày được tính vào từng ngày; không tính phiếu `NHAP`.
+- Tỷ lệ: doanh thu ngày / tổng doanh thu tháng × 100; tháng không có doanh thu là 0%.
+- Sử dụng thuốc: tổng `ChiTietDonThuoc.soLuong` và số phiếu `DA_LAP` khác nhau chứa thuốc,
+  theo tháng khám. Không phụ thuộc việc hóa đơn đã thanh toán.
+- Hai truy vấn doanh thu/thuốc độc lập tránh nhân đôi doanh thu khi phiếu có nhiều thuốc.
+  Bảng doanh thu có đủ mọi ngày trong tháng; biểu đồ vẫn có bảng thay thế nếu CDN lỗi.
+
+Theo xác nhận của nhóm, `HoaDon` ánh xạ bảng thật hiện có trên TiDB
+(`MaHoaDon`, `MaPhieuKham`, `MaNV`, `NgayLap`, `TienKham`, `TienThuoc`,
+`TongTien`, `PhuongThuc`, `TrangThai`), không chuyển đổi theo lược đồ PDF cũ.
+Không thay đổi dữ liệu/schema hóa đơn do đồng đội tạo.
+Các cột tiền của hóa đơn và đơn giá thuốc giữ kiểu floating-point đang tồn tại;
+khi báo cáo doanh thu, tổng được chuyển sang Decimal và làm tròn 2 chữ số để hiển thị.
+
+`QuyDinh` giữ lược đồ `MaQD`, `tenQuyDinh`, `giaTri` (Numeric), thay cho
+`key:Object`/`value:List<Object>` không khớp lược đồ trong hình lớp.
+Theo xác nhận, `capNhatTienKham(giaTriMoi)` và `capNhatQuyDinhKham(soBenhNhan)`
+nhận giá trị mới; `laySoBenhNhanToiDa()` trả int. DAO kiểm tra quyền, khóa hàng và commit.
+Tiền khám mới không sửa hóa đơn cũ. Giới hạn tiếp nhận được lưu để luồng danh sách khám
+sử dụng khi triển khai; đợt này chưa tự áp giới hạn vào chức năng bác sĩ hoặc đặt lịch.
 
 `requirements.txt` bao gồm các thư viện trong mẫu lớp: Flask, Flask-Admin,
 Flask-Login, Flask-SQLAlchemy, PyMySQL, Cloudinary, WTForms và các phụ thuộc.
@@ -240,7 +295,8 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
   ở đầu trang mở danh sách bản nháp để tiếp tục hoặc xóa, kể cả sau khi tải lại
   trang. Xóa bản nháp yêu cầu xác nhận và chỉ áp dụng cho bản nháp của bác sĩ
   đang đăng nhập.
-  Các bảng thanh toán và danh sách khám chưa nằm trong phạm vi model hiện tại.
+  Model hóa đơn đã ánh xạ bảng thật để truy vấn báo cáo; luồng thu ngân và
+  danh sách khám chưa nằm trong phạm vi code hiện tại.
 - Điểm đã báo để nhóm sửa thiết kế: `NhanVien.capNhatThongTin(quyDinh): QuyDinh`
   không khớp tên thao tác; `HoaDon.inHoaDon(): Double` không khớp việc xuất bản in.
   Chưa triển khai các chữ ký này hay tự đổi chúng trong code.

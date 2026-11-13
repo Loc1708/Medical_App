@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -189,3 +190,55 @@ class ChiTietDonThuoc(db.Model):
     cachDung: Mapped[str] = mapped_column(db.String(255), nullable=False)
     thuoc: Mapped[Thuoc] = relationship(back_populates="chiTietDonThuocs")
     phieuKham: Mapped[PhieuKham] = relationship(back_populates="chiTietDonThuocs")
+
+
+class HoaDon(db.Model):
+    __tablename__ = "HoaDon"
+    __table_args__ = {"sqlite_autoincrement": True}
+
+    maHoaDon: Mapped[int] = mapped_column("MaHoaDon", db.Integer, primary_key=True, autoincrement=True)
+    ngayLap: Mapped[datetime] = mapped_column("NgayLap", db.DateTime, nullable=False)
+    tienKham: Mapped[float] = mapped_column("TienKham", db.Double, nullable=False, default=0)
+    tienThuoc: Mapped[float] = mapped_column("TienThuoc", db.Double, nullable=False, default=0)
+    tongTien: Mapped[float] = mapped_column("TongTien", db.Double, nullable=False, default=0)
+    phuongThuc: Mapped[str] = mapped_column("PhuongThuc", db.String(20), nullable=False, default="TIEN_MAT")
+    trangThai: Mapped[str] = mapped_column("TrangThai", db.String(20), nullable=False, default="CHUA_THANH_TOAN")
+    maPhieuKham: Mapped[str] = mapped_column(
+        "MaPhieuKham", db.ForeignKey("PhieuKham.MaPhieuKham"), nullable=False, unique=True,
+    )
+    maNV: Mapped[int] = mapped_column("MaNV", db.ForeignKey("NhanVien.MaNV"), nullable=False)
+    phieuKham: Mapped[PhieuKham] = relationship()
+    nhanVien: Mapped[NhanVien] = relationship()
+
+
+class QuyDinh(db.Model):
+    __tablename__ = "QuyDinh"
+    __table_args__ = (
+        db.CheckConstraint("giaTri > 0", name="ck_rule_positive"),
+    )
+
+    maQD: Mapped[str] = mapped_column("MaQD", db.String(30), primary_key=True)
+    tenQuyDinh: Mapped[str] = mapped_column(db.String(100), nullable=False)
+    giaTri: Mapped[Decimal] = mapped_column(db.Numeric(15, 2), nullable=False)
+
+    def capNhatTienKham(self, giaTriMoi: Decimal) -> None:
+        if self.maQD != "TIEN_KHAM":
+            raise ValueError("Đây không phải quy định tiền khám.")
+        if not giaTriMoi.is_finite() or not Decimal("0") < giaTriMoi <= Decimal("9999999999999.99"):
+            raise ValueError("Tiền khám phải lớn hơn 0 và nằm trong giới hạn lưu trữ.")
+        if giaTriMoi != giaTriMoi.quantize(Decimal("0.01")):
+            raise ValueError("Tiền khám chỉ được có tối đa 2 chữ số thập phân.")
+        self.giaTri = giaTriMoi
+
+    def capNhatQuyDinhKham(self, soBenhNhan: int) -> None:
+        if self.maQD != "SO_BENH_NHAN_TOI_DA":
+            raise ValueError("Đây không phải quy định số bệnh nhân tối đa.")
+        if isinstance(soBenhNhan, bool) or not 1 <= soBenhNhan <= 100000:
+            raise ValueError("Số bệnh nhân tối đa phải là số nguyên từ 1 đến 100000.")
+        self.giaTri = Decimal(soBenhNhan)
+
+    def laySoBenhNhanToiDa(self) -> int:
+        if (self.maQD != "SO_BENH_NHAN_TOI_DA"
+                or self.giaTri != self.giaTri.to_integral_value() or not 1 <= self.giaTri <= 100000):
+            raise ValueError("Quy định số bệnh nhân tối đa không hợp lệ.")
+        return int(self.giaTri)

@@ -6,6 +6,23 @@
     --muted: #596b70;
     --line: #dce8e5;
 }
+.panel.catalog-panel { padding: 20px; min-height: 360px; border-radius: 8px; }
+.catalog-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; }
+.catalog-toolbar form { width: 350px; max-width: 100%; }
+.catalog-table.table { font-size: .85rem; }
+.catalog-table.table thead { background: white; font-size: .7rem; letter-spacing: .03em; }
+.catalog-table.table > :not(caption) > * > * { padding: 12px 8px; }
+.catalog-toolbar .form-control { padding: .45rem .65rem; font-size: .8rem; }
+.catalog-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.catalog-icon { display: inline-flex; padding: 4px; border: 0; background: none; color: var(--ink); }
+.catalog-icon:hover { color: var(--primary); background: var(--mint); border-radius: 4px; }
+.catalog-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.catalog-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px; border-top: 1px solid var(--line); }
+.report-chart { height: 320px; position: relative; }
+@media (max-width: 600px) {
+    .catalog-toolbar, .catalog-pagination { align-items: stretch; flex-direction: column; }
+    .report-chart { height: 260px; }
+}
 body { background: #f5f9f8; color: var(--ink); font-family: system-ui, sans-serif; }
 a { color: var(--primary); }
 a:hover { color: #104540; }

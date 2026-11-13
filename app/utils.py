@@ -17,7 +17,7 @@ def csrf_token() -> str:
 
 def protect_csrf() -> None:
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-        supplied = request.form.get("csrf_token", "")
+        supplied = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
         if not supplied or not expected or not secrets.compare_digest(
             supplied.encode("utf-8"), expected.encode("utf-8")

@@ -1,4 +1,5 @@
 import hashlib
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from flask import abort, flash, jsonify, redirect, render_template, request, session, url_for
@@ -74,6 +75,8 @@ def dashboard():
         clinic_timezone = timezone(timedelta(hours=7))
         exam_date = datetime.now(clinic_timezone).date()
         return render_template("doctor/dashboard.html", exam_date=exam_date)
+    if current_user.role == Role.NURSE:
+        return render_template("nurse/dashboard.html", current_year=date.today().year)
     if current_user.role == Role.PATIENT:
         return _render_patient_dashboard()
     template = {
@@ -121,17 +124,200 @@ def patient_register_exam():
     elif not address or len(address) > 255:
         flash("Địa chỉ bắt buộc và tối đa 255 ký tự.", "danger")
     else:
-        dao.register_patient_exam(
-            patient,
-            name=name,
-            gender=gender,
-            birth_year=birth_year,
-            address=address,
-        )
-        flash("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", "success")
+        try:
+            registration = dao.register_patient_exam(
+                patient,
+                name=name,
+                gender=gender,
+                birth_year=birth_year,
+                address=address,
+            )
+        except ValueError as error:
+            db.session.rollback()
+            flash(str(error), "danger")
+            return _render_patient_dashboard(request.form, status=400)
+        if registration.trangThai == "CHO_DUYET":
+            flash(
+                "Đã nhận đăng ký. Danh sách đủ chỗ; hồ sơ đang chờ y tá duyệt.",
+                "success",
+            )
+        else:
+            flash("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", "success")
         return redirect(url_for("dashboard"))
 
     return _render_patient_dashboard(request.form, status=400)
+
+
+def _nurse_exam_date(value: object) -> date:
+    if not isinstance(value, str):
+        raise ValueError("Ngày khám không hợp lệ.")
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise ValueError("Ngày khám không hợp lệ.") from None
+
+
+def _nurse_exam_payload(payload: object) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Dữ liệu bệnh nhân không hợp lệ.")
+    name = payload.get("name", "")
+    gender = payload.get("gender", "")
+    phone = payload.get("phone", "")
+    address = payload.get("address", "")
+    try:
+        birth_year = int(payload.get("birthYear", ""))
+    except (TypeError, ValueError):
+        birth_year = 0
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100:
+        raise ValueError("Họ tên bắt buộc và tối đa 100 ký tự.")
+    if not isinstance(gender, str) or gender not in {"Nam", "Nữ", "Khác"}:
+        raise ValueError("Giới tính không hợp lệ.")
+    if not 1900 <= birth_year <= date.today().year:
+        raise ValueError("Năm sinh phải từ 1900 đến năm hiện tại.")
+    if not isinstance(phone, str) or not re.fullmatch(r"\+?[0-9]{9,15}", phone.strip()):
+        raise ValueError("Số điện thoại phải có 9–15 chữ số, có thể bắt đầu bằng +.")
+    if not isinstance(address, str) or not address.strip() or len(address.strip()) > 255:
+        raise ValueError("Địa chỉ bắt buộc và tối đa 255 ký tự.")
+    return {
+        "name": name.strip(),
+        "gender": gender,
+        "birth_year": birth_year,
+        "phone": phone.strip(),
+        "address": address.strip(),
+    }
+
+
+def _nurse_exam_json(registration) -> dict:
+    return {
+        "id": registration.maDSKham,
+        "name": registration.hoTen,
+        "gender": registration.gioiTinh,
+        "birthYear": registration.namSinh,
+        "phone": registration.benhNhan.soDienThoai,
+        "address": registration.diaChi,
+        "status": registration.trangThai,
+        "slot": registration.soThuTu,
+    }
+
+
+@app.get("/nurse/api/lists")
+@roles_required(Role.NURSE)
+def nurse_exam_lists():
+    try:
+        exam_date = _nurse_exam_date(request.args.get("date"))
+        limit = dao.daily_patient_limit()
+        active, waiting = dao.nurse_exam_list(exam_date)
+        history = dao.nurse_exam_history()
+    except ValueError as error:
+        return jsonify(error=str(error)), 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse exam list read failed.")
+        return jsonify(error="Không thể tải danh sách khám từ cơ sở dữ liệu."), 500
+    confirmed = bool(active) and all(
+        entry.trangThai == "DA_XAC_NHAN" for entry in active
+    )
+    return jsonify(
+        date=exam_date.isoformat(),
+        limit=limit,
+        active=[_nurse_exam_json(entry) for entry in active],
+        waiting=[_nurse_exam_json(entry) for entry in waiting],
+        history=history,
+        confirmed=confirmed,
+    )
+
+
+@app.post("/nurse/api/lists")
+@roles_required(Role.NURSE)
+def nurse_create_exam():
+    try:
+        payload = request.get_json(silent=True)
+        data = _nurse_exam_payload(payload)
+        exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
+        registration = dao.create_nurse_exam(exam_date=exam_date, **data)
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409 if isinstance(error, dao.DailyCapacityReached) else 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse patient registration failed.")
+        return jsonify(error="Không thể lưu lượt khám vào cơ sở dữ liệu."), 500
+    message = (
+        "Danh sách đã đủ chỗ; bệnh nhân được lưu vào hàng chờ để y tá duyệt."
+        if registration.trangThai == "CHO_DUYET"
+        else "Đã lưu bệnh nhân vào danh sách khám."
+    )
+    return jsonify(patient=_nurse_exam_json(registration), message=message), 201
+
+
+@app.put("/nurse/api/lists/<int:registration_id>")
+@roles_required(Role.NURSE)
+def nurse_update_exam(registration_id: int):
+    try:
+        data = _nurse_exam_payload(request.get_json(silent=True))
+        registration = dao.update_nurse_exam(registration_id, **data)
+    except LookupError as error:
+        return jsonify(error=str(error)), 404
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse patient update failed.")
+        return jsonify(error="Không thể cập nhật lượt khám trong cơ sở dữ liệu."), 500
+    return jsonify(patient=_nurse_exam_json(registration), message="Đã cập nhật bệnh nhân.")
+
+
+@app.delete("/nurse/api/lists/<int:registration_id>")
+@roles_required(Role.NURSE)
+def nurse_cancel_exam(registration_id: int):
+    try:
+        dao.cancel_nurse_exam(registration_id)
+    except LookupError as error:
+        return jsonify(error=str(error)), 404
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse exam cancellation failed.")
+        return jsonify(error="Không thể hủy lượt khám trong cơ sở dữ liệu."), 500
+    return jsonify(message="Đã hủy lượt khám.")
+
+
+@app.post("/nurse/api/lists/<int:registration_id>/approve")
+@roles_required(Role.NURSE)
+def nurse_approve_exam(registration_id: int):
+    try:
+        registration = dao.approve_waiting_nurse_exam(registration_id)
+    except LookupError as error:
+        return jsonify(error=str(error)), 404
+    except dao.DailyCapacityReached as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 400
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse waiting-list approval failed.")
+        return jsonify(error="Không thể duyệt bệnh nhân trong cơ sở dữ liệu."), 500
+    return jsonify(patient=_nurse_exam_json(registration), message="Đã duyệt bệnh nhân vào danh sách khám.")
+
+
+@app.post("/nurse/api/lists/confirm")
+@roles_required(Role.NURSE)
+def nurse_confirm_exam_day():
+    try:
+        payload = request.get_json(silent=True)
+        exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
+        confirmed_count = dao.confirm_nurse_exam_day(exam_date)
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse exam-list confirmation failed.")
+        return jsonify(error="Không thể xác nhận danh sách trong cơ sở dữ liệu."), 500
+    message = "Danh sách đã được xác nhận." if confirmed_count else "Danh sách đã được xác nhận trước đó."
+    return jsonify(message=message)
 
 
 @app.get("/doctor/api/patients")

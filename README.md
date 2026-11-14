@@ -156,6 +156,19 @@ nhận trạng thái `DA_LAP`, không xóa hoặc sửa nội dung hồ sơ:
 ```
 
 Database mới đã có cột này sau `init-db`, nên migration sẽ báo không cần thay đổi.
+
+Trước khi dùng danh sách khám của y tá trên database hiện có, chạy migration một lần:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app upgrade-nurse-queue-schema
+```
+
+Migration giữ nguyên hồ sơ cũ, bổ sung ngày khám/thứ tự, cho phép hồ sơ bệnh nhân
+được tạo bởi y tá chưa có tài khoản, và tạo quy định giới hạn mặc định 40 nếu còn thiếu.
+Mỗi ngày danh sách chính nhận tối đa theo `SO_BENH_NHAN_TOI_DA`; lượt vượt giới hạn
+được lưu với trạng thái `CHO_DUYET`. Y tá chỉ duyệt lượt chờ vào danh sách chính
+khi đã có chỗ trống. Hủy lượt khám giải phóng chỗ nhưng vẫn giữ bản ghi trạng thái `DA_HUY`.
+
 Để tạo dữ liệu DEMO cho luồng bác sĩ trên database hiện cấu hình, sau migration, chạy:
 
 ```powershell
@@ -254,8 +267,9 @@ Thư mục `.venv`, `instance`, các tệp `.env` và Python cache được Git 
 - Role/trạng thái được đọc lại từ CSDL mỗi request. Các thao tác ghi có CSRF token,
   kiểm tra đầu vào và transaction; không cho phép chỉ dựa vào menu để kiểm soát quyền.
 - Giao diện có header, sidebar, footer chung và thư mục riêng theo từng role.
-  Các trang y tá/thu ngân hiện hiển thị rõ chức năng nghiệp vụ chưa triển khai,
-  không có nút giả hoặc thông báo thành công cho thao tác chưa thực hiện.
+  Trang y tá có thể thao tác thêm/sửa/xóa/tìm kiếm, chọn ngày, phân trang và xác nhận
+  danh sách đã lưu; danh sách chính và hàng chờ được lưu vào database, chưa gửi SMS.
+  Nghiệp vụ thu ngân chưa được triển khai.
 
 Tài khoản quản trị khởi tạo riêng cho máy này có thông tin trong
 `instance\bootstrap-admin.txt` (không commit). Đăng nhập, sửa chính tài khoản,
@@ -308,8 +322,8 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
   trang. Xóa bản nháp yêu cầu xác nhận và chỉ áp dụng cho bản nháp của bác sĩ
   đang đăng nhập.
   Model hóa đơn đã ánh xạ bảng thật để truy vấn báo cáo. Bệnh nhân có thể
-  đăng ký và xem các lượt đăng ký của mình; luồng thu ngân và xử lý danh sách
-  khám của y tá chưa nằm trong phạm vi code hiện tại.
+  đăng ký và xem trạng thái lượt đăng ký của mình; y tá quản lý danh sách theo ngày
+  trong database, duyệt lượt vượt giới hạn từ hàng chờ khi có chỗ trống.
 - Điểm đã báo để nhóm sửa thiết kế: `NhanVien.capNhatThongTin(quyDinh): QuyDinh`
   không khớp tên thao tác; `HoaDon.inHoaDon(): Double` không khớp việc xuất bản in.
   Chưa triển khai các chữ ký này hay tự đổi chúng trong code.

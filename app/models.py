@@ -125,8 +125,10 @@ class BenhNhan(db.Model):
     namSinh: Mapped[int] = mapped_column(db.Integer, nullable=False)
     diaChi: Mapped[str] = mapped_column(db.String(255), nullable=False)
     soDienThoai: Mapped[str] = mapped_column(db.String(20), nullable=False)
-    maTK: Mapped[int] = mapped_column("MaTK", db.ForeignKey("TaiKhoan.MaTK"), unique=True, nullable=False)
-    taiKhoan: Mapped[TaiKhoan] = relationship(back_populates="benhNhan")
+    maTK: Mapped[int | None] = mapped_column(
+        "MaTK", db.ForeignKey("TaiKhoan.MaTK"), unique=True, nullable=True,
+    )
+    taiKhoan: Mapped[TaiKhoan | None] = relationship(back_populates="benhNhan")
 
     @property
     def maHienThi(self) -> str:
@@ -138,7 +140,13 @@ class BenhNhan(db.Model):
 
 class DanhSachKham(db.Model):
     __tablename__ = "DanhSachKham"
-    __table_args__ = {"sqlite_autoincrement": True}
+    __table_args__ = (
+        db.Index(
+            "uq_dskham_ngay_thu_tu", "NgayKham", "SoThuTu", unique=True,
+        ),
+        db.Index("ix_dskham_ngay_trang_thai", "NgayKham", "TrangThai"),
+        {"sqlite_autoincrement": True},
+    )
 
     maDSKham: Mapped[int] = mapped_column("MaDSKham", db.Integer, primary_key=True, autoincrement=True)
     maBN: Mapped[int] = mapped_column("MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False)
@@ -146,6 +154,8 @@ class DanhSachKham(db.Model):
     gioiTinh: Mapped[str] = mapped_column("GioiTinh", db.String(10), nullable=False)
     namSinh: Mapped[int] = mapped_column("NamSinh", db.Integer, nullable=False)
     diaChi: Mapped[str] = mapped_column("DiaChi", db.String(255), nullable=False)
+    ngayKham: Mapped[date] = mapped_column("NgayKham", db.Date, nullable=False)
+    soThuTu: Mapped[int | None] = mapped_column("SoThuTu", db.Integer, nullable=True)
     ngayDangKy: Mapped[datetime] = mapped_column("NgayDangKy", db.DateTime, nullable=False)
     trangThai: Mapped[str] = mapped_column(
         "TrangThai", db.String(20), nullable=False, default="CHO_KHAM",

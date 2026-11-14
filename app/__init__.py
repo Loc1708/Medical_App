@@ -150,6 +150,28 @@ def upgrade_clinical_schema() -> None:
     click.echo("PhieuKham.trangThai added; existing exams default to DA_LAP.")
 
 
+@app.cli.command("upgrade-nurse-queue-schema")
+def upgrade_nurse_queue_schema() -> None:
+    """Prepare patient profiles and daily registration rows for the nurse queue."""
+    from app.migration import upgrade_nurse_queue_schema as upgrade_schema
+
+    try:
+        changed = upgrade_schema(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Nurse queue schema upgrade failed.")
+        raise click.ClickException(
+            "Could not upgrade the nurse queue schema; inspect the database before retrying."
+        ) from None
+    if changed:
+        click.echo(
+            "Nurse queue schema is ready; existing registrations were preserved and dated."
+        )
+    else:
+        click.echo("Nurse queue schema already exists; no changes made.")
+
+
 @app.cli.command("seed-doctor-demo")
 def seed_doctor_demo() -> None:
     """Create clearly labeled sample records for the doctor workflow."""

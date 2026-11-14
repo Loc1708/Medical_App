@@ -1,5 +1,6 @@
 import unittest
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from unittest.mock import patch
 
 from flask import g
@@ -11,7 +12,7 @@ from app.index import app
 from app import dao, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDonThuoc, DanhSachKham, DonViThuoc, NhanVien,
-    PhieuKham, Role, TaiKhoan, Thuoc,
+    PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
 )
 
 
@@ -34,6 +35,12 @@ class AccountTests(unittest.TestCase):
         self.client = app.test_client()
         self.password = "Test-password-123!"
         self.admin = dao.create_account(self.data("admin", Role.ADMIN))
+        db.session.add(QuyDinh(
+            maQD="SO_BENH_NHAN_TOI_DA",
+            tenQuyDinh="Số bệnh nhân tối đa trong ngày",
+            giaTri=Decimal("40"),
+        ))
+        db.session.commit()
 
     def tearDown(self):
         db.session.remove()
@@ -105,6 +112,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(registration.namSinh, 1998)
         self.assertEqual(registration.diaChi, "Địa chỉ khi đăng ký")
         self.assertEqual(registration.trangThai, "CHO_KHAM")
+        self.assertEqual(registration.ngayKham, date.today())
 
         page = self.client.get("/dashboard")
         html = page.get_data(as_text=True)
@@ -171,9 +179,19 @@ class AccountTests(unittest.TestCase):
             self.sign_in(name, client=other_client)
             page = other_client.get("/dashboard", follow_redirects=True)
             self.assertEqual(page.status_code, 200)
-            self.assertIn(role.label, page.get_data(as_text=True))
+            page_html = page.get_data(as_text=True)
+            self.assertIn(role.label, page_html)
             for part in ('class="sidebar"', 'class="topbar"', 'class="app-footer"'):
-                self.assertIn(part, page.get_data(as_text=True))
+                self.assertIn(part, page_html)
+            if role == Role.NURSE:
+                self.assertIn("Danh sách bệnh nhân", page_html)
+                self.assertIn("Xác nhận danh sách", page_html)
+                self.assertIn('data-nurse-app', page_html)
+                self.assertIn('data-patient-form', page_html)
+                self.assertIn('id="nurse-birth-year"', page_html)
+                self.assertIn("/static/js/nurse.js", page_html)
+                self.assertIn('data-waiting-rows', page_html)
+                self.assertNotIn("data-preview-control", page_html)
 
     def test_doctor_dashboard_matches_consultation_mockup_without_fake_records(self):
         dao.create_account(self.data("doctor_ui", Role.DOCTOR))

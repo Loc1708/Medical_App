@@ -140,6 +140,34 @@ main { flex: 1; }
 .doctor-medicine-actions { display: flex; gap: 6px; white-space: nowrap; }
 .prescription-table .form-control:disabled { background: #f5f8f7; opacity: 1; }
 .doctor-status.is-error { border-color: #e7b6b2; background: #fff4f3; color: #8c2821; }
+.nurse-page { max-width: 1440px; margin: 0 auto; }
+.nurse-heading { align-items: flex-end; }
+.nurse-date-panel { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.nurse-date-control { display: flex; align-items: center; gap: 18px; }
+.nurse-date-control .form-control { width: 220px; }
+.nurse-info-note { max-width: none; margin-bottom: 0; }
+.nurse-status { padding: 12px 16px; border: 1px solid #bbdcd4; border-radius: 10px; background: #edf8f5; color: var(--primary); font-size: .9rem; }
+.nurse-status.is-error { border-color: #e7b6b2; background: #fff4f3; color: #8c2821; }
+.nurse-status.is-success { border-color: #b6d9c2; background: #edf9f1; color: #24644d; }
+.nurse-history-panel { scroll-margin-top: 20px; }
+.nurse-workspace-grid { display: grid; grid-template-columns: minmax(230px, .75fr) minmax(0, 1.8fr); gap: 20px; align-items: stretch; }
+.nurse-panel { min-width: 0; }
+.nurse-panel-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 22px; }
+.nurse-panel-heading p { font-size: .85rem; }
+.nurse-list-heading { justify-content: space-between; }
+.nurse-list-heading > div { display: flex; align-items: flex-start; gap: 12px; }
+.nurse-gender-options { display: flex; flex-wrap: wrap; gap: 18px; }
+.nurse-search-row { display: flex; gap: 10px; margin-bottom: 18px; }
+.nurse-search-row .form-control { min-width: 0; }
+.nurse-table { font-size: .85rem; }
+.nurse-table > :not(caption) > * > * { padding: 12px 10px; }
+.nurse-table th { white-space: nowrap; }
+.nurse-table-empty { height: 72px; text-align: center; color: var(--muted); }
+.nurse-row-actions { white-space: nowrap; }
+.nurse-row-actions .btn + .btn { margin-left: 4px; }
+.nurse-list-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px; }
+.nurse-pagination { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.nurse-form-actions, .nurse-confirm-row { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
 @media (max-width: 900px) {
     .app-shell { flex-direction: column; }
     .sidebar { width: 100%; padding: 12px 18px; border-right: 0; border-bottom: 1px solid var(--line); }
@@ -161,4 +189,11 @@ main { flex: 1; }
     .doctor-search-row { flex-wrap: wrap; }
     .doctor-search-row .form-control { flex-basis: 100%; }
     .doctor-patient-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .nurse-workspace-grid { grid-template-columns: 1fr; }
+    .nurse-date-panel, .nurse-date-control, .nurse-list-footer { align-items: stretch; flex-direction: column; }
+    .nurse-date-control .form-control { width: 100%; }
+    .nurse-search-row { flex-wrap: wrap; }
+    .nurse-search-row .form-control { flex-basis: 100%; }
+    .nurse-pagination { justify-content: flex-start; }
+    .nurse-confirm-row { align-items: stretch; flex-direction: column-reverse; }
 }

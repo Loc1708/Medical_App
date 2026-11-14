@@ -1,2 +1,212 @@
-{% extends "layout/role_dashboard.html" %}
-{% block role_content %}<h2 class="h5">Lập danh sách khám</h2>{% endblock %}
+{% extends "layout/base.html" %}
+{% block title %}Danh sách khám · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="nurse-page" data-nurse-app data-max-patients="0">
+    <div class="page-heading nurse-heading">
+        <div>
+            <span class="eyebrow">KHÔNG GIAN Y TÁ</span>
+            <h1 class="h3 mt-2 mb-1">Danh sách khám</h1>
+            <p class="text-muted mb-0">Xin chào, {{ current_user.hoTen }}. Tiếp nhận và quản lý danh sách khám theo ngày.</p>
+        </div>
+        <button class="btn btn-outline-primary" type="button" data-toggle-history
+                aria-expanded="false" aria-controls="nurse-history">
+            Lịch sử danh sách
+        </button>
+    </div>
+
+    <div class="alert alert-info nurse-info-note mt-4" role="note">
+        Danh sách và hàng chờ được lưu vào cơ sở dữ liệu. Bệnh nhân vượt giới hạn trong ngày sẽ chờ y tá duyệt.
+        Hệ thống chưa gửi SMS.
+    </div>
+    <div class="nurse-status mt-3" data-nurse-status role="status" aria-live="polite" hidden></div>
+
+    <section class="panel nurse-date-panel mt-4" aria-labelledby="nurse-date-heading">
+        <div class="nurse-date-control">
+            <div>
+                <h2 class="h6 mb-1" id="nurse-date-heading">Lịch khám</h2>
+                <label class="form-label mb-0" for="nurse-exam-date">Chọn ngày khám</label>
+            </div>
+            <input class="form-control" id="nurse-exam-date" type="date" value="{{ exam_date }}"
+                   aria-label="Chọn ngày khám" required>
+        </div>
+        <span class="role-badge" data-daily-limit>Đang tải giới hạn...</span>
+    </section>
+
+    <section class="panel nurse-history-panel mt-4" id="nurse-history"
+             aria-labelledby="nurse-history-heading" hidden>
+        <div class="nurse-panel-heading">
+            <div>
+                <h2 class="h5 mb-1" id="nurse-history-heading">Lịch sử danh sách</h2>
+                <p class="text-muted mb-0">Chọn ngày để xem lại danh sách đã lưu trong cơ sở dữ liệu.</p>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle nurse-table mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col">Ngày khám</th>
+                        <th scope="col">Trong danh sách</th>
+                        <th scope="col">Chờ duyệt</th>
+                        <th scope="col">Trạng thái</th>
+                        <th scope="col">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody data-history-rows></tbody>
+            </table>
+        </div>
+    </section>
+
+    <div class="nurse-workspace-grid mt-4">
+        <section class="panel nurse-panel" aria-labelledby="nurse-add-heading">
+            <div class="nurse-panel-heading">
+                <span class="doctor-step" aria-hidden="true">01</span>
+                <div>
+                    <h2 class="h5 mb-1" id="nurse-add-heading">Thêm bệnh nhân</h2>
+                    <p class="text-muted mb-0">Nhập thông tin vào danh sách ngày đang chọn.</p>
+                </div>
+            </div>
+
+            <form data-patient-form novalidate>
+                <div class="mb-3">
+                    <label class="form-label" for="nurse-patient-name">Họ và tên</label>
+                    <input class="form-control" id="nurse-patient-name" name="name"
+                           type="text" maxlength="100" autocomplete="name"
+                           placeholder="Nhập họ và tên" required>
+                </div>
+                <fieldset class="mb-3">
+                    <legend class="form-label mb-2">Giới tính</legend>
+                    <div class="nurse-gender-options">
+                        {% for gender in ['Nam', 'Nữ', 'Khác'] %}
+                        <div class="form-check">
+                            <input class="form-check-input" id="nurse-gender-{{ loop.index }}"
+                                   type="radio" name="gender" value="{{ gender }}" required>
+                            <label class="form-check-label" for="nurse-gender-{{ loop.index }}">{{ gender }}</label>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                <div class="mb-3">
+                    <label class="form-label" for="nurse-birth-year">Năm sinh</label>
+                    <select class="form-select" id="nurse-birth-year" name="birthYear" required>
+                        <option value="">Chọn năm sinh</option>
+                        {% for year in range(current_year, 1899, -1) %}
+                        <option value="{{ year }}">{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="nurse-patient-phone">Số điện thoại</label>
+                    <input class="form-control" id="nurse-patient-phone" name="phone"
+                           type="tel" maxlength="16" autocomplete="tel"
+                           pattern="\+?[0-9]{9,15}" placeholder="Ví dụ: 0901234567" required>
+                    <small class="text-muted">9–15 chữ số, có thể bắt đầu bằng +.</small>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label" for="nurse-patient-address">Địa chỉ</label>
+                    <input class="form-control" id="nurse-patient-address" name="address"
+                           type="text" maxlength="255" autocomplete="street-address"
+                           placeholder="Nhập địa chỉ" required>
+                </div>
+                <div class="nurse-form-actions">
+                    <button class="btn btn-primary" type="submit" data-submit-patient>
+                        Thêm vào danh sách
+                    </button>
+                    <button class="btn btn-outline-secondary" type="button"
+                            data-cancel-edit hidden>Hủy sửa</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="panel nurse-panel" aria-labelledby="nurse-list-heading">
+            <div class="nurse-panel-heading nurse-list-heading">
+                <div>
+                    <span class="doctor-step" aria-hidden="true">02</span>
+                    <div>
+                        <h2 class="h5 mb-1" id="nurse-list-heading">Danh sách bệnh nhân</h2>
+                        <p class="text-muted mb-0">Danh sách theo ngày khám đã chọn.</p>
+                    </div>
+                </div>
+                <span class="role-badge" data-patient-count>0/40</span>
+            </div>
+
+            <form class="nurse-search-row" data-search-form>
+                <label class="visually-hidden" for="nurse-search">Tìm tên bệnh nhân</label>
+                <input class="form-control" id="nurse-search" type="search"
+                       placeholder="Tìm tên bệnh nhân (VD: Nguyễn Văn A)">
+                <button class="btn btn-outline-primary" type="submit">Tìm</button>
+                <button class="btn btn-outline-secondary" type="button" data-clear-search>Xóa tìm</button>
+            </form>
+
+            <div class="table-responsive">
+                <table class="table align-middle nurse-table mb-0">
+                    <caption class="visually-hidden">Danh sách bệnh nhân khám trong ngày</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">STT</th>
+                            <th scope="col">Họ tên</th>
+                            <th scope="col">Giới tính</th>
+                            <th scope="col">SĐT</th>
+                            <th scope="col">Năm sinh</th>
+                            <th scope="col">Thao tác</th>
+                        </tr>
+                    </thead>
+                    <tbody data-patient-rows></tbody>
+                </table>
+            </div>
+
+            <div class="nurse-list-footer">
+                <span class="text-muted small" data-list-summary>Chưa có bệnh nhân.</span>
+                <nav class="nurse-pagination" data-pagination aria-label="Phân trang danh sách bệnh nhân"></nav>
+            </div>
+        </section>
+    </div>
+
+    <section class="panel nurse-waiting-panel mt-4" aria-labelledby="nurse-waiting-heading">
+        <div class="nurse-panel-heading nurse-list-heading">
+            <div>
+                <span class="doctor-step" aria-hidden="true">03</span>
+                <div>
+                    <h2 class="h5 mb-1" id="nurse-waiting-heading">Danh sách chờ duyệt</h2>
+                    <p class="text-muted mb-1">
+                        Hiển thị lượt chờ của mọi ngày. Chọn ngày ở mục Lịch khám phía trên làm ngày đích;
+                        chỉ duyệt từ hôm nay trở đi và khi ngày đích còn chỗ.
+                    </p>
+                    <p class="small fw-semibold mb-0" data-approval-target aria-live="polite"></p>
+                </div>
+            </div>
+            <span class="role-badge" data-waiting-count>0</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table align-middle nurse-table mb-0">
+                <caption class="visually-hidden">Bệnh nhân chờ y tá duyệt vào danh sách khám</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">STT</th>
+                        <th scope="col">Họ tên</th>
+                        <th scope="col">Ngày đang chờ</th>
+                        <th scope="col">SĐT</th>
+                        <th scope="col">Năm sinh</th>
+                        <th scope="col">Thao tác</th>
+                    </tr>
+                </thead>
+                <tbody data-waiting-rows></tbody>
+            </table>
+        </div>
+        <div class="nurse-list-footer">
+            <span class="text-muted small" data-waiting-summary>Chưa có bệnh nhân chờ duyệt.</span>
+            <nav class="nurse-pagination" data-waiting-pagination
+                 aria-label="Phân trang danh sách chờ duyệt"></nav>
+        </div>
+    </section>
+
+    <div class="nurse-confirm-row mt-4">
+        <span class="text-muted small" data-confirmed-status></span>
+        <button class="btn btn-primary" type="button" data-confirm-list>
+            Xác nhận danh sách
+        </button>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/nurse.js') }}"></script>
+{% endblock %}

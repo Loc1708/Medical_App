@@ -156,6 +156,26 @@ nhận trạng thái `DA_LAP`, không xóa hoặc sửa nội dung hồ sơ:
 ```
 
 Database mới đã có cột này sau `init-db`, nên migration sẽ báo không cần thay đổi.
+
+Với database đang dùng cấu trúc đăng ký cũ, dừng server/tiến trình đang ghi và
+sao lưu database trước khi đổi cấu trúc. Chạy migration sau một lần:
+
+```powershell
+.\.venv313\Scripts\python.exe -m flask --app app.index:app upgrade-nurse-many-to-many-schema
+```
+
+Lệnh chuẩn bị schema hàng chờ nếu cần, chuyển mỗi ngày thành một dòng `DanhSachKham`
+và mỗi lượt bệnh nhân thành một dòng `ChiTietDanhSachKham`. Trạng thái, số thứ tự,
+thời điểm đăng ký và thông tin tại thời điểm đăng ký được giữ ở bảng chi tiết.
+Các dòng cũ được sao chép và kiểm tra; bảng cũ được giữ nguyên với tên
+`DanhSachKham_legacy`. `MaNV` để trống cho đến khi y tá thao tác với danh sách ngày.
+Mỗi ngày danh sách chính nhận tối đa theo `SO_BENH_NHAN_TOI_DA`; lượt vượt giới hạn
+được lưu với trạng thái `CHO_DUYET`. Chỉ duyệt từ hôm nay trở đi và khi ngày đích
+còn chỗ. Hủy lượt khám giải phóng chỗ nhưng vẫn giữ bản ghi trạng thái `DA_HUY`.
+Nếu migration báo lỗi và để lại `_DanhSachKham_m2m` hoặc
+`_ChiTietDanhSachKham_m2m`, hãy kiểm tra database trước khi chạy lại; không tự xóa
+các bảng này hay bảng backup.
+
 Để tạo dữ liệu DEMO cho luồng bác sĩ trên database hiện cấu hình, sau migration, chạy:
 
 ```powershell
@@ -175,10 +195,10 @@ thuộc quy trình nghiệp vụ của thu ngân.
 .\.venv\Scripts\python.exe -m flask --app app.index:app create-patient-registration-table
 ```
 
-Lệnh này chỉ tạo `DanhSachKham` nếu bảng chưa tồn tại. Khi bệnh nhân gửi form
-đăng ký, thông tin họ tên, giới tính, năm sinh và địa chỉ được lưu kèm mã hồ sơ,
-thời điểm đăng ký và trạng thái `CHO_KHAM`; hồ sơ gốc trong `BenhNhan` không bị
-thay đổi.
+Lệnh này tạo `DanhSachKham` và `ChiTietDanhSachKham` khi chưa có. Với database
+cũ còn bảng `DanhSachKham` dạng từng lượt đăng ký, hãy chạy migration phía trên
+thay vì tạo bảng thủ công. Bệnh nhân đăng ký qua bảng chi tiết liên kết hồ sơ
+`BenhNhan`, còn bảng danh sách lưu ngày khám và y tá phụ trách.
 
 Mở http://127.0.0.1:5000. Dừng bằng Ctrl+C.
 Lệnh trên bật debug, chỉ dùng cho môi trường development.
@@ -254,8 +274,11 @@ Thư mục `.venv`, `instance`, các tệp `.env` và Python cache được Git 
 - Role/trạng thái được đọc lại từ CSDL mỗi request. Các thao tác ghi có CSRF token,
   kiểm tra đầu vào và transaction; không cho phép chỉ dựa vào menu để kiểm soát quyền.
 - Giao diện có header, sidebar, footer chung và thư mục riêng theo từng role.
-  Các trang y tá/thu ngân hiện hiển thị rõ chức năng nghiệp vụ chưa triển khai,
-  không có nút giả hoặc thông báo thành công cho thao tác chưa thực hiện.
+  Trang y tá có thể thao tác thêm/sửa/xóa/tìm kiếm, chọn ngày, phân trang và xác nhận
+  danh sách đã lưu; danh sách chính và hàng chờ được lưu vào database, chưa gửi SMS.
+  Hàng chờ hiển thị trên mọi ngày đang chọn; y tá có thể chuyển lượt chờ sang ngày
+  từ hôm nay trở đi nếu ngày đó còn chỗ.
+  Nghiệp vụ thu ngân chưa được triển khai.
 
 Tài khoản quản trị khởi tạo riêng cho máy này có thông tin trong
 `instance\bootstrap-admin.txt` (không commit). Đăng nhập, sửa chính tài khoản,
@@ -308,14 +331,15 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
   trang. Xóa bản nháp yêu cầu xác nhận và chỉ áp dụng cho bản nháp của bác sĩ
   đang đăng nhập.
   Model hóa đơn đã ánh xạ bảng thật để truy vấn báo cáo. Bệnh nhân có thể
-  đăng ký và xem các lượt đăng ký của mình; luồng thu ngân và xử lý danh sách
-  khám của y tá chưa nằm trong phạm vi code hiện tại.
+  đăng ký và xem trạng thái lượt đăng ký của mình; y tá quản lý danh sách theo ngày
+  trong database, duyệt lượt vượt giới hạn từ hàng chờ vào ngày đã chọn khi còn chỗ.
 - Điểm đã báo để nhóm sửa thiết kế: `NhanVien.capNhatThongTin(quyDinh): QuyDinh`
   không khớp tên thao tác; `HoaDon.inHoaDon(): Double` không khớp việc xuất bản in.
   Chưa triển khai các chữ ký này hay tự đổi chúng trong code.
 - `BenhNhan.dangKyKham()` trong sơ đồ là đăng ký lượt khám, không phải đăng ký tài khoản.
   Luồng đăng ký lượt khám dùng `/patient/exam-registrations`, không gán nhầm
-  vào `/register`. Giới hạn tiếp nhận chưa áp dụng vào luồng đăng ký này.
+  vào `/register`. Giới hạn tiếp nhận áp dụng vào luồng đăng ký này; lượt vượt giới hạn
+  được lưu vào hàng chờ để y tá duyệt.
 
 ## Kiểm tra
 

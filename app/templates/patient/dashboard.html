@@ -61,7 +61,7 @@
             <thead>
                 <tr>
                     <th scope="col">Mã đăng ký</th>
-                    <th scope="col">Ngày đăng ký</th>
+                    <th scope="col">Ngày khám</th>
                     <th scope="col">Họ tên</th>
                     <th scope="col">Trạng thái</th>
                 </tr>
@@ -69,10 +69,20 @@
             <tbody>
                 {% for registration in registrations %}
                 <tr>
-                    <td>DK-{{ "%05d"|format(registration.maDSKham) }}</td>
-                    <td>{{ registration.ngayDangKy.strftime("%d/%m/%Y %H:%M") }}</td>
+                    <td>DK-{{ "%05d"|format(registration.maCTDSKham) }}</td>
+                    <td>{{ registration.ngayKham.strftime("%d/%m/%Y") }}</td>
                     <td>{{ registration.hoTen }}</td>
-                    <td><span class="role-badge">Chờ khám</span></td>
+                    <td>
+                        {% if registration.trangThai == 'CHO_DUYET' %}
+                        <span class="role-badge">Chờ y tá duyệt</span>
+                        {% elif registration.trangThai == 'DA_XAC_NHAN' %}
+                        <span class="role-badge">Đã xác nhận</span>
+                        {% elif registration.trangThai == 'DA_HUY' %}
+                        <span class="role-badge">Đã hủy</span>
+                        {% else %}
+                        <span class="role-badge">Chờ khám</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% else %}
                 <tr>

@@ -99,27 +99,61 @@ def check_db() -> None:
 def init_db() -> None:
     """Create tables missing from the current models; never alter existing schema."""
     from app import models
+    from sqlalchemy import inspect
+    from app.models import ChiTietDanhSachKham
+
+    inspector = inspect(db.engine)
+    existing_tables = set(inspector.get_table_names())
+    if "DanhSachKham" in existing_tables and "ChiTietDanhSachKham" not in existing_tables:
+        day_columns = {
+            column["name"] for column in inspector.get_columns("DanhSachKham")
+        }
+        if "MaBN" in day_columns:
+            tables = [
+                table for table in db.metadata.sorted_tables
+                if table is not ChiTietDanhSachKham.__table__
+            ]
+            db.create_all(tables=tables)
+            click.echo(
+                "Existing registration schema retained; run "
+                "upgrade-nurse-many-to-many-schema while writers are stopped."
+            )
+            return
     db.create_all()
     click.echo("Tables missing from the current models are ready.")
 
 
 @app.cli.command("create-patient-registration-table")
 def create_patient_registration_table() -> None:
-    """Create only the patient exam registration table if it is missing."""
+    """Create the daily exam list and patient-association tables if missing."""
     from sqlalchemy import inspect
-    from app.models import DanhSachKham
+    from app.models import ChiTietDanhSachKham, DanhSachKham
 
     existing_tables = set(inspect(db.engine).get_table_names())
-    if "BenhNhan" not in existing_tables:
-        raise click.ClickException("BenhNhan is missing; run init-db first.")
+    if not {"BenhNhan", "NhanVien"} <= existing_tables:
+        raise click.ClickException(
+            "BenhNhan or NhanVien is missing; run init-db first."
+        )
+    if "DanhSachKham" in existing_tables and "ChiTietDanhSachKham" not in existing_tables:
+        day_columns = {
+            column["name"] for column in inspect(db.engine).get_columns("DanhSachKham")
+        }
+        if "MaBN" in day_columns:
+            raise click.ClickException(
+                "DanhSachKham uses the older registration schema; run "
+                "upgrade-nurse-many-to-many-schema with writers stopped."
+            )
     try:
-        db.metadata.create_all(bind=db.engine, tables=[DanhSachKham.__table__])
+        db.metadata.create_all(
+            bind=db.engine,
+            tables=[DanhSachKham.__table__, ChiTietDanhSachKham.__table__],
+        )
     except SQLAlchemyError:
         app.logger.exception("Patient registration table creation failed.")
         raise click.ClickException(
-            "Could not create DanhSachKham; inspect the database before retrying."
+            "Could not create exam-list tables; inspect the database before retrying."
         ) from None
-    click.echo("DanhSachKham is ready.")
+    click.echo("DanhSachKham and ChiTietDanhSachKham are ready.")
 
 
 @app.cli.command("upgrade-clinical-schema")
@@ -148,6 +182,50 @@ def upgrade_clinical_schema() -> None:
             "Could not add PhieuKham.trangThai; inspect the database before retrying."
         ) from None
     click.echo("PhieuKham.trangThai added; existing exams default to DA_LAP.")
+
+
+@app.cli.command("upgrade-nurse-queue-schema")
+def upgrade_nurse_queue_schema() -> None:
+    """Prepare patient profiles and daily registration rows for the nurse queue."""
+    from app.migration import upgrade_nurse_queue_schema as upgrade_schema
+
+    try:
+        changed = upgrade_schema(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Nurse queue schema upgrade failed.")
+        raise click.ClickException(
+            "Could not upgrade the nurse queue schema; inspect the database before retrying."
+        ) from None
+    if changed:
+        click.echo(
+            "Nurse queue schema is ready; existing registrations were preserved and dated."
+        )
+    else:
+        click.echo("Nurse queue schema already exists; no changes made.")
+
+
+@app.cli.command("upgrade-nurse-many-to-many-schema")
+def upgrade_nurse_many_to_many_schema() -> None:
+    """Move registration rows into the daily-list/patient association schema."""
+    from app.migration import upgrade_nurse_many_to_many_schema as upgrade_schema
+
+    try:
+        changed = upgrade_schema(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Nurse many-to-many schema upgrade failed.")
+        raise click.ClickException(
+            "Could not upgrade nurse exam-list tables; inspect the database before retrying."
+        ) from None
+    if changed:
+        click.echo(
+            "Exam lists were normalized; existing registration data remains in the legacy backup."
+        )
+    else:
+        click.echo("Nurse many-to-many schema already exists; no changes made.")
 
 
 @app.cli.command("seed-doctor-demo")

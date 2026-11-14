@@ -69,7 +69,7 @@
             <tbody>
                 {% for registration in registrations %}
                 <tr>
-                    <td>DK-{{ "%05d"|format(registration.maDSKham) }}</td>
+                    <td>DK-{{ "%05d"|format(registration.maCTDSKham) }}</td>
                     <td>{{ registration.ngayKham.strftime("%d/%m/%Y") }}</td>
                     <td>{{ registration.hoTen }}</td>
                     <td>

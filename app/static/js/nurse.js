@@ -21,12 +21,14 @@ if (nurseApp) {
     const waitingSummary = nurseApp.querySelector("[data-waiting-summary]");
     const patientCount = nurseApp.querySelector("[data-patient-count]");
     const waitingCount = nurseApp.querySelector("[data-waiting-count]");
+    const approvalTarget = nurseApp.querySelector("[data-approval-target]");
     const status = nurseApp.querySelector("[data-nurse-status]");
     const historyPanel = nurseApp.querySelector("#nurse-history");
     const historyRows = nurseApp.querySelector("[data-history-rows]");
     const confirmedStatus = nurseApp.querySelector("[data-confirmed-status]");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     let selectedDate = "";
+    let clinicToday = todayValue();
     let currentPage = 1;
     let currentWaitingPage = 1;
     let searchTerm = "";
@@ -91,6 +93,7 @@ if (nurseApp) {
             `/nurse/api/lists?date=${encodeURIComponent(selectedDate)}`
         );
         dailyLimit = data.limit;
+        clinicToday = data.today;
         activePatients = data.active;
         waitingPatients = data.waiting;
         history = data.history;
@@ -210,13 +213,17 @@ if (nurseApp) {
 
         waitingRows.replaceChildren();
         waitingCount.textContent = String(waitingPatients.length);
+        const targetIsPast = selectedDate < clinicToday;
+        approvalTarget.textContent = targetIsPast
+            ? "Không thể duyệt vào ngày đã qua."
+            : `Ngày khám đích: ${formatDate(selectedDate)}`;
         if (!visible.length) {
             const row = document.createElement("tr");
             const cell = makeCell(
                 row,
                 searchTerm ? "Không tìm thấy bệnh nhân phù hợp." : "Chưa có bệnh nhân chờ duyệt."
             );
-            cell.colSpan = 5;
+            cell.colSpan = 6;
             cell.className = "nurse-table-empty";
             waitingRows.append(row);
         } else {
@@ -224,6 +231,7 @@ if (nurseApp) {
                 const row = document.createElement("tr");
                 makeCell(row, String(start + index + 1));
                 makeCell(row, patient.name);
+                makeCell(row, formatDate(patient.examDate));
                 makeCell(row, patient.phone);
                 makeCell(row, String(patient.birthYear));
                 const actions = document.createElement("td");
@@ -231,8 +239,9 @@ if (nurseApp) {
                 actions.append(
                     makeButton("Sửa", "btn btn-sm btn-outline-primary", "editPatient", patient.id),
                     makeButton(
-                        "Duyệt", "btn btn-sm btn-outline-success", "approvePatient",
-                        patient.id, activePatients.length >= dailyLimit
+                        "Duyệt vào ngày đã chọn", "btn btn-sm btn-outline-success",
+                        "approvePatient", patient.id,
+                        targetIsPast || activePatients.length >= dailyLimit
                     ),
                     makeButton(
                         "Hủy", "btn btn-sm btn-outline-danger", "cancelPatient", patient.id
@@ -383,7 +392,7 @@ if (nurseApp) {
         try {
             const result = await requestApi(`/nurse/api/lists/${patientId}/approve`, {
                 method: "POST",
-                body: JSON.stringify({}),
+                body: JSON.stringify({ date: selectedDate }),
             });
             await refreshDay();
             showStatus(result.message, "success");
@@ -398,7 +407,7 @@ if (nurseApp) {
         showStatus("Đã hủy chỉnh sửa.");
     });
 
-    dateInput.value = todayValue();
+    dateInput.value = dateInput.value || todayValue();
     selectedDate = dateInput.value;
     dateInput.addEventListener("change", async () => {
         if (editingPatientId) resetPatientForm();

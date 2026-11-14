@@ -26,7 +26,7 @@
                 <h2 class="h6 mb-1" id="nurse-date-heading">Lịch khám</h2>
                 <label class="form-label mb-0" for="nurse-exam-date">Chọn ngày khám</label>
             </div>
-            <input class="form-control" id="nurse-exam-date" type="date"
+            <input class="form-control" id="nurse-exam-date" type="date" value="{{ exam_date }}"
                    aria-label="Chọn ngày khám" required>
         </div>
         <span class="role-badge" data-daily-limit>Đang tải giới hạn...</span>
@@ -167,7 +167,11 @@
                 <span class="doctor-step" aria-hidden="true">03</span>
                 <div>
                     <h2 class="h5 mb-1" id="nurse-waiting-heading">Danh sách chờ duyệt</h2>
-                    <p class="text-muted mb-0">Chỉ duyệt vào danh sách chính khi còn chỗ trong ngày.</p>
+                    <p class="text-muted mb-1">
+                        Hiển thị lượt chờ của mọi ngày. Chọn ngày ở mục Lịch khám phía trên làm ngày đích;
+                        chỉ duyệt từ hôm nay trở đi và khi ngày đích còn chỗ.
+                    </p>
+                    <p class="small fw-semibold mb-0" data-approval-target aria-live="polite"></p>
                 </div>
             </div>
             <span class="role-badge" data-waiting-count>0</span>
@@ -179,6 +183,7 @@
                     <tr>
                         <th scope="col">STT</th>
                         <th scope="col">Họ tên</th>
+                        <th scope="col">Ngày đang chờ</th>
                         <th scope="col">SĐT</th>
                         <th scope="col">Năm sinh</th>
                         <th scope="col">Thao tác</th>

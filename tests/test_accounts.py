@@ -11,8 +11,8 @@ from sqlalchemy.exc import OperationalError
 from app.index import app
 from app import dao, db
 from app.models import (
-    BacSi, BenhNhan, ChiTietDonThuoc, DanhSachKham, DonViThuoc, NhanVien,
-    PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
+    BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
+    DonViThuoc, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
 )
 
 
@@ -104,7 +104,7 @@ class AccountTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 302)
 
-        registration = db.session.scalar(db.select(DanhSachKham))
+        registration = db.session.scalar(db.select(ChiTietDanhSachKham))
         self.assertIsNotNone(registration)
         self.assertEqual(registration.maBN, patient.benhNhan.maBN)
         self.assertEqual(registration.hoTen, "Tên khi đăng ký")
@@ -113,6 +113,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(registration.diaChi, "Địa chỉ khi đăng ký")
         self.assertEqual(registration.trangThai, "CHO_KHAM")
         self.assertEqual(registration.ngayKham, date.today())
+        self.assertIsNone(registration.danhSachKham.maNV)
 
         page = self.client.get("/dashboard")
         html = page.get_data(as_text=True)
@@ -132,7 +133,12 @@ class AccountTests(unittest.TestCase):
         })
         self.assertEqual(invalid.status_code, 400)
         self.assertIn("Năm sinh phải từ 1900 đến năm hiện tại.", invalid.get_data(as_text=True))
-        self.assertEqual(db.session.scalar(db.select(db.func.count()).select_from(DanhSachKham)), 0)
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count()).select_from(ChiTietDanhSachKham)
+            ),
+            0,
+        )
 
         dao.create_account(self.data("registration_doctor", Role.DOCTOR))
         doctor_client = app.test_client()
@@ -606,12 +612,13 @@ class AccountTests(unittest.TestCase):
             {
                 "TaiKhoan", "BenhNhan", "NhanVien", "BacSi",
                 "DonViThuoc", "Thuoc", "PhieuKham", "ChiTietDonThuoc",
-                "HoaDon", "QuyDinh", "DanhSachKham",
+                "HoaDon", "QuyDinh", "DanhSachKham", "ChiTietDanhSachKham",
             },
         )
         self.assertEqual(BacSi.__table__.primary_key.columns.keys(), ["MaNV"])
 
     def test_patient_registration_table_command_is_idempotent(self):
+        ChiTietDanhSachKham.__table__.drop(db.engine, checkfirst=True)
         DanhSachKham.__table__.drop(db.engine, checkfirst=True)
         runner = app.test_cli_runner()
 
@@ -621,6 +628,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(first.exit_code, 0, first.output)
         self.assertEqual(second.exit_code, 0, second.output)
         self.assertIn("DanhSachKham", inspect(db.engine).get_table_names())
+        self.assertIn("ChiTietDanhSachKham", inspect(db.engine).get_table_names())
 
     def test_modal_edit_validates_confirmation_and_preserves_password(self):
         account = dao.create_account(self.data())

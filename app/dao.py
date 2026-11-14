@@ -10,8 +10,8 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app import app, db
 from app.models import (
-    BacSi, BenhNhan, ChiTietDonThuoc, DanhSachKham, DonViThuoc, HoaDon,
-    NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
+    BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
+    DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
 )
 from app.utils import validate_password
 
@@ -21,6 +21,10 @@ NURSE_VISIBLE_STATUSES = (*ACTIVE_EXAM_STATUSES, "CHO_DUYET")
 
 
 class DailyCapacityReached(ValueError):
+    pass
+
+
+class PastExamDate(ValueError):
     pass
 
 
@@ -60,11 +64,14 @@ def patient_exam_history(patient_id: int) -> list[PhieuKham]:
     ))
 
 
-def patient_exam_registrations(patient_id: int) -> list[DanhSachKham]:
+def patient_exam_registrations(patient_id: int) -> list[ChiTietDanhSachKham]:
     return list(db.session.scalars(
-        db.select(DanhSachKham)
-        .where(DanhSachKham.maBN == patient_id)
-        .order_by(DanhSachKham.ngayKham.desc(), DanhSachKham.ngayDangKy.desc())
+        db.select(ChiTietDanhSachKham)
+        .where(ChiTietDanhSachKham.maBN == patient_id)
+        .order_by(
+            ChiTietDanhSachKham.ngayKham.desc(),
+            ChiTietDanhSachKham.ngayDangKy.desc(),
+        )
     ))
 
 
@@ -78,13 +85,17 @@ def daily_patient_limit(*, lock: bool = False) -> int:
     return rule.laySoBenhNhanToiDa()
 
 
+def clinic_today() -> date:
+    return datetime.now(timezone(timedelta(hours=7))).date()
+
+
 def _next_daily_slot(exam_date: date) -> int | None:
     limit = daily_patient_limit(lock=True)
     used_slots = set(db.session.scalars(
-        db.select(DanhSachKham.soThuTu).where(
-            DanhSachKham.ngayKham == exam_date,
-            DanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
-            DanhSachKham.soThuTu.is_not(None),
+        db.select(ChiTietDanhSachKham.soThuTu).where(
+            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
+            ChiTietDanhSachKham.soThuTu.is_not(None),
         )
     ))
     if len(used_slots) >= limit:
@@ -92,28 +103,41 @@ def _next_daily_slot(exam_date: date) -> int | None:
     return next((slot for slot in range(1, limit + 1) if slot not in used_slots), None)
 
 
-def nurse_exam_list(exam_date: date) -> tuple[list[DanhSachKham], list[DanhSachKham]]:
-    entries = list(db.session.scalars(
-        db.select(DanhSachKham).where(
-            DanhSachKham.ngayKham == exam_date,
-            DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-        ).order_by(DanhSachKham.soThuTu, DanhSachKham.ngayDangKy, DanhSachKham.maDSKham)
+def nurse_exam_list(
+    exam_date: date,
+) -> tuple[list[ChiTietDanhSachKham], list[ChiTietDanhSachKham]]:
+    active = list(db.session.scalars(
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
+        ).order_by(
+            ChiTietDanhSachKham.soThuTu,
+            ChiTietDanhSachKham.ngayDangKy,
+            ChiTietDanhSachKham.maCTDSKham,
+        )
     ))
-    active = [entry for entry in entries if entry.trangThai in ACTIVE_EXAM_STATUSES]
-    waiting = [entry for entry in entries if entry.trangThai == "CHO_DUYET"]
+    waiting = list(db.session.scalars(
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.trangThai == "CHO_DUYET",
+        ).order_by(
+            ChiTietDanhSachKham.ngayKham,
+            ChiTietDanhSachKham.ngayDangKy,
+            ChiTietDanhSachKham.maCTDSKham,
+        )
+    ))
     return active, waiting
 
 
 def nurse_exam_history() -> list[dict]:
     rows = db.session.execute(
         db.select(
-            DanhSachKham.ngayKham,
-            DanhSachKham.trangThai,
-            db.func.count(DanhSachKham.maDSKham),
+            ChiTietDanhSachKham.ngayKham,
+            ChiTietDanhSachKham.trangThai,
+            db.func.count(ChiTietDanhSachKham.maCTDSKham),
         )
-        .where(DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES))
-        .group_by(DanhSachKham.ngayKham, DanhSachKham.trangThai)
-        .order_by(DanhSachKham.ngayKham.desc())
+        .where(ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES))
+        .group_by(ChiTietDanhSachKham.ngayKham, ChiTietDanhSachKham.trangThai)
+        .order_by(ChiTietDanhSachKham.ngayKham.desc())
     )
     history: dict[date, dict] = {}
     for exam_date, status, count in rows:
@@ -142,6 +166,20 @@ def _commit_exam_list_change() -> None:
         raise
 
 
+def _get_or_create_exam_day(exam_date: date, nurse_id: int | None = None) -> DanhSachKham:
+    exam_day = db.session.scalar(
+        db.select(DanhSachKham)
+        .where(DanhSachKham.ngayKham == exam_date)
+        .with_for_update()
+    )
+    if exam_day is None:
+        exam_day = DanhSachKham(ngayKham=exam_date, maNV=nurse_id)
+        db.session.add(exam_day)
+    elif exam_day.maNV is None and nurse_id is not None:
+        exam_day.maNV = nurse_id
+    return exam_day
+
+
 def register_patient_exam(
     patient: BenhNhan,
     *,
@@ -150,26 +188,27 @@ def register_patient_exam(
     birth_year: int,
     address: str,
     exam_date: date | None = None,
-) -> DanhSachKham:
+) -> ChiTietDanhSachKham:
     exam_date = exam_date or datetime.now(timezone(timedelta(hours=7))).date()
     slot = _next_daily_slot(exam_date)
     duplicate = db.session.scalar(
-        db.select(DanhSachKham.maDSKham).where(
-            DanhSachKham.maBN == patient.maBN,
-            DanhSachKham.ngayKham == exam_date,
-            DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
+        db.select(ChiTietDanhSachKham.maCTDSKham).where(
+            ChiTietDanhSachKham.maBN == patient.maBN,
+            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         )
     )
     if duplicate is not None:
         raise ValueError("Bạn đã có lượt đăng ký khám trong ngày này.")
 
-    registration = DanhSachKham(
+    registration = ChiTietDanhSachKham(
+        danhSachKham=_get_or_create_exam_day(exam_date),
         benhNhan=patient,
+        ngayKham=exam_date,
         hoTen=name,
         gioiTinh=gender,
         namSinh=birth_year,
         diaChi=address,
-        ngayKham=exam_date,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
         trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",
@@ -187,15 +226,16 @@ def create_nurse_exam(
     birth_year: int,
     phone: str,
     address: str,
-) -> DanhSachKham:
+    nurse_id: int | None = None,
+) -> ChiTietDanhSachKham:
     slot = _next_daily_slot(exam_date)
     duplicate = db.session.scalar(
-        db.select(DanhSachKham.maDSKham)
+        db.select(ChiTietDanhSachKham.maCTDSKham)
         .join(BenhNhan)
         .where(
-            DanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.ngayKham == exam_date,
             BenhNhan.soDienThoai == phone,
-            DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
+            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         )
     )
     if duplicate is not None:
@@ -222,13 +262,14 @@ def create_nurse_exam(
         db.session.add(patient)
         db.session.flush()
 
-    registration = DanhSachKham(
+    registration = ChiTietDanhSachKham(
+        danhSachKham=_get_or_create_exam_day(exam_date, nurse_id),
         benhNhan=patient,
+        ngayKham=exam_date,
         hoTen=name,
         gioiTinh=gender,
         namSinh=birth_year,
         diaChi=address,
-        ngayKham=exam_date,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
         trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",
@@ -246,11 +287,11 @@ def update_nurse_exam(
     birth_year: int,
     phone: str,
     address: str,
-) -> DanhSachKham:
+) -> ChiTietDanhSachKham:
     registration = db.session.scalar(
-        db.select(DanhSachKham).where(
-            DanhSachKham.maDSKham == registration_id,
-            DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.maCTDSKham == registration_id,
+            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         ).with_for_update()
     )
     if registration is None:
@@ -259,13 +300,13 @@ def update_nurse_exam(
         raise ValueError("Lượt khám đã xác nhận, không thể chỉnh sửa.")
 
     duplicate = db.session.scalar(
-        db.select(DanhSachKham.maDSKham)
+        db.select(ChiTietDanhSachKham.maCTDSKham)
         .join(BenhNhan)
         .where(
-            DanhSachKham.ngayKham == registration.ngayKham,
+            ChiTietDanhSachKham.ngayKham == registration.ngayKham,
             BenhNhan.soDienThoai == phone,
-            DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-            DanhSachKham.maDSKham != registration_id,
+            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
+            ChiTietDanhSachKham.maCTDSKham != registration_id,
         )
     )
     if duplicate is not None:
@@ -286,9 +327,9 @@ def update_nurse_exam(
 
 def cancel_nurse_exam(registration_id: int) -> None:
     registration = db.session.scalar(
-        db.select(DanhSachKham).where(
-            DanhSachKham.maDSKham == registration_id,
-            DanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.maCTDSKham == registration_id,
+            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         ).with_for_update()
     )
     if registration is None:
@@ -298,43 +339,65 @@ def cancel_nurse_exam(registration_id: int) -> None:
     _commit_exam_list_change()
 
 
-def approve_waiting_nurse_exam(registration_id: int) -> DanhSachKham:
+def approve_waiting_nurse_exam(
+    registration_id: int,
+    target_date: date,
+    nurse_id: int | None = None,
+) -> ChiTietDanhSachKham:
+    if target_date < clinic_today():
+        raise PastExamDate("Không thể duyệt bệnh nhân vào ngày đã qua.")
+
     registration = db.session.scalar(
-        db.select(DanhSachKham).where(
-            DanhSachKham.maDSKham == registration_id,
-            DanhSachKham.trangThai == "CHO_DUYET",
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.maCTDSKham == registration_id,
+            ChiTietDanhSachKham.trangThai == "CHO_DUYET",
         ).with_for_update()
     )
     if registration is None:
         raise LookupError("Không tìm thấy lượt khám đang chờ duyệt.")
-    slot = _next_daily_slot(registration.ngayKham)
+
+    duplicate = db.session.scalar(
+        db.select(ChiTietDanhSachKham.maCTDSKham).where(
+            ChiTietDanhSachKham.maBN == registration.maBN,
+            ChiTietDanhSachKham.ngayKham == target_date,
+            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
+            ChiTietDanhSachKham.maCTDSKham != registration_id,
+        )
+    )
+    if duplicate is not None:
+        raise ValueError("Bệnh nhân đã có lượt đăng ký trong ngày được chọn.")
+
+    slot = _next_daily_slot(target_date)
     if slot is None:
         limit = daily_patient_limit()
         raise DailyCapacityReached(
-            f"Danh sách ngày {registration.ngayKham.strftime('%d/%m/%Y')} đã đủ {limit} bệnh nhân."
+            f"Danh sách ngày {target_date.strftime('%d/%m/%Y')} đã đủ {limit} bệnh nhân."
         )
+    registration.danhSachKham = _get_or_create_exam_day(target_date, nurse_id)
+    registration.ngayKham = target_date
     registration.soThuTu = slot
     registration.trangThai = "CHO_KHAM"
     _commit_exam_list_change()
     return registration
 
 
-def confirm_nurse_exam_day(exam_date: date) -> int:
+def confirm_nurse_exam_day(exam_date: date, nurse_id: int | None = None) -> int:
     registrations = list(db.session.scalars(
-        db.select(DanhSachKham).where(
-            DanhSachKham.ngayKham == exam_date,
-            DanhSachKham.trangThai == "CHO_KHAM",
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.trangThai == "CHO_KHAM",
         ).with_for_update()
     ))
     if not registrations:
         if db.session.scalar(
-            db.select(DanhSachKham.maDSKham).where(
-                DanhSachKham.ngayKham == exam_date,
-                DanhSachKham.trangThai == "DA_XAC_NHAN",
+            db.select(ChiTietDanhSachKham.maCTDSKham).where(
+                ChiTietDanhSachKham.ngayKham == exam_date,
+                ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
             )
         ) is not None:
             return 0
         raise ValueError("Không có bệnh nhân nào trong danh sách để xác nhận.")
+    _get_or_create_exam_day(exam_date, nurse_id)
     for registration in registrations:
         registration.trangThai = "DA_XAC_NHAN"
     _commit_exam_list_change()

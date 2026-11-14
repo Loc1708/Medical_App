@@ -1,7 +1,8 @@
 """One-time UUID-to-integer migration, run only with application writers stopped."""
 
 from sqlalchemy import (
-    Column, Enum, ForeignKey, Integer, MetaData, Table, inspect, select, text,
+    Column, Date, DateTime, Enum, ForeignKey, ForeignKeyConstraint, Index,
+    Integer, MetaData, String, Table, UniqueConstraint, inspect, select, text,
 )
 from sqlalchemy.engine import Engine
 
@@ -175,6 +176,23 @@ def _upgrade_nurse_schema(connection, engine: Engine) -> bool:
         raise ValueError(
             "Required tables are missing; run init-db first: " + ", ".join(sorted(missing))
         )
+    if "ChiTietDanhSachKham" in tables:
+        detail_columns = {
+            column["name"]
+            for column in inspector.get_columns("ChiTietDanhSachKham")
+        }
+        day_columns = {
+            column["name"] for column in inspector.get_columns("DanhSachKham")
+        }
+        if (
+            {"MaCTDSKham", "MaDSKham", "MaBN", "NgayKham", "SoThuTu", "TrangThai"}
+            <= detail_columns
+            and {"MaDSKham", "NgayKham", "MaNV"} <= day_columns
+        ):
+            return False
+        raise ValueError(
+            "ChiTietDanhSachKham exists with an incomplete schema; inspect before retrying."
+        )
 
     changed = False
     if engine.dialect.name == "sqlite":
@@ -327,3 +345,199 @@ def upgrade_nurse_queue_schema(engine: Engine) -> bool:
         if violations:
             raise ValueError("Foreign-key violations found after migration; inspect the database.")
         return changed
+
+
+def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
+    if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
+        raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
+
+    tables = set(inspect(engine).get_table_names())
+    if "DanhSachKham" not in tables or "BenhNhan" not in tables or "NhanVien" not in tables:
+        raise ValueError(
+            "DanhSachKham, BenhNhan, and NhanVien are required; run init-db first."
+        )
+    if "ChiTietDanhSachKham" in tables:
+        day_columns = {
+            column["name"] for column in inspect(engine).get_columns("DanhSachKham")
+        }
+        detail_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("ChiTietDanhSachKham")
+        }
+        if (
+            {"MaDSKham", "NgayKham", "MaNV"} <= day_columns
+            and {
+                "MaCTDSKham", "MaDSKham", "MaBN", "NgayKham",
+                "SoThuTu", "NgayDangKy", "TrangThai",
+            } <= detail_columns
+        ):
+            return False
+        raise ValueError(
+            "ChiTietDanhSachKham exists with an incomplete schema; inspect before retrying."
+        )
+
+    stage_day_name = "_DanhSachKham_m2m"
+    stage_detail_name = "_ChiTietDanhSachKham_m2m"
+    backup_name = "DanhSachKham_legacy"
+    if {stage_day_name, stage_detail_name, backup_name} & tables:
+        raise ValueError(
+            "Migration staging or backup tables already exist; inspect before retrying."
+        )
+
+    day_columns = {
+        column["name"] for column in inspect(engine).get_columns("DanhSachKham")
+    }
+    if "MaBN" not in day_columns:
+        raise ValueError(
+            "DanhSachKham does not match the legacy registration schema; inspect it first."
+        )
+
+    upgrade_nurse_queue_schema(engine)
+    source_metadata = MetaData()
+    source_day = Table("DanhSachKham", source_metadata, autoload_with=engine)
+    expected_source_columns = {
+        "MaDSKham", "MaBN", "HoTen", "GioiTinh", "NamSinh", "DiaChi",
+        "NgayKham", "SoThuTu", "NgayDangKy", "TrangThai",
+    }
+    if not expected_source_columns <= set(source_day.columns.keys()):
+        raise ValueError(
+            "DanhSachKham has unexpected columns; inspect it before migration."
+        )
+
+    staging_metadata = MetaData()
+    Table("NhanVien", staging_metadata, autoload_with=engine)
+    Table("BenhNhan", staging_metadata, autoload_with=engine)
+    staged_day = Table(
+        stage_day_name,
+        staging_metadata,
+        Column("MaDSKham", Integer, primary_key=True, autoincrement=True),
+        Column("NgayKham", Date, nullable=False),
+        Column("MaNV", Integer, ForeignKey("NhanVien.MaNV"), nullable=True),
+        UniqueConstraint("NgayKham", name="uq_dskham_ngay"),
+        UniqueConstraint("MaDSKham", "NgayKham", name="uq_dskham_id_ngay"),
+        sqlite_autoincrement=True,
+    )
+    staged_detail = Table(
+        stage_detail_name,
+        staging_metadata,
+        Column("MaCTDSKham", Integer, primary_key=True, autoincrement=True),
+        Column("MaDSKham", Integer, nullable=False),
+        Column("MaBN", Integer, ForeignKey("BenhNhan.MaBN"), nullable=False),
+        Column("NgayKham", Date, nullable=False),
+        Column("SoThuTu", Integer, nullable=True),
+        Column("NgayDangKy", DateTime, nullable=False),
+        Column("TrangThai", String(20), nullable=False),
+        Column("HoTen", String(100), nullable=False),
+        Column("GioiTinh", String(10), nullable=False),
+        Column("NamSinh", Integer, nullable=False),
+        Column("DiaChi", String(255), nullable=False),
+        ForeignKeyConstraint(
+            ["MaDSKham", "NgayKham"],
+            [f"{stage_day_name}.MaDSKham", f"{stage_day_name}.NgayKham"],
+            name="fk_ctdsk_list_date",
+        ),
+        Index("uq_ctdsk_ngay_thu_tu", "NgayKham", "SoThuTu", unique=True),
+        Index("ix_ctdsk_ngay_trang_thai", "NgayKham", "TrangThai"),
+        sqlite_autoincrement=True,
+    )
+
+    def copy_and_swap(connection) -> None:
+        source_rows = connection.execute(
+            select(source_day).order_by(source_day.c.NgayKham, source_day.c.MaDSKham)
+        ).mappings().all()
+        dates = sorted({row["NgayKham"] for row in source_rows})
+        day_ids = {exam_date: index for index, exam_date in enumerate(dates, 1)}
+        day_rows = [
+            {"MaDSKham": day_ids[exam_date], "NgayKham": exam_date, "MaNV": None}
+            for exam_date in dates
+        ]
+        detail_rows = [
+            {
+                "MaCTDSKham": row["MaDSKham"],
+                "MaDSKham": day_ids[row["NgayKham"]],
+                "MaBN": row["MaBN"],
+                "NgayKham": row["NgayKham"],
+                "SoThuTu": row["SoThuTu"],
+                "NgayDangKy": row["NgayDangKy"],
+                "TrangThai": row["TrangThai"],
+                "HoTen": row["HoTen"],
+                "GioiTinh": row["GioiTinh"],
+                "NamSinh": row["NamSinh"],
+                "DiaChi": row["DiaChi"],
+            }
+            for row in source_rows
+        ]
+
+        staging_metadata.create_all(connection)
+        if day_rows:
+            connection.execute(staged_day.insert(), day_rows)
+        if detail_rows:
+            connection.execute(staged_detail.insert(), detail_rows)
+
+        copied_rows = connection.execute(
+            select(
+                staged_detail.c.MaCTDSKham,
+                staged_detail.c.MaDSKham,
+                staged_detail.c.MaBN,
+                staged_detail.c.NgayKham,
+                staged_detail.c.SoThuTu,
+                staged_detail.c.NgayDangKy,
+                staged_detail.c.TrangThai,
+                staged_detail.c.HoTen,
+                staged_detail.c.GioiTinh,
+                staged_detail.c.NamSinh,
+                staged_detail.c.DiaChi,
+            ).order_by(staged_detail.c.MaCTDSKham)
+        ).all()
+        expected_rows = [
+            (
+                row["MaCTDSKham"], row["MaDSKham"], row["MaBN"], row["NgayKham"],
+                row["SoThuTu"], row["NgayDangKy"], row["TrangThai"], row["HoTen"],
+                row["GioiTinh"], row["NamSinh"], row["DiaChi"],
+            )
+            for row in sorted(detail_rows, key=lambda item: item["MaCTDSKham"])
+        ]
+        if copied_rows != expected_rows:
+            raise ValueError(
+                "Migrated registration rows do not match the source; original table retained."
+            )
+
+        quote = connection.dialect.identifier_preparer.quote
+        if engine.dialect.name in {"mysql", "mariadb"}:
+            connection.exec_driver_sql(
+                "RENAME TABLE "
+                f"{quote('DanhSachKham')} TO {quote(backup_name)}, "
+                f"{quote(stage_day_name)} TO {quote('DanhSachKham')}, "
+                f"{quote(stage_detail_name)} TO {quote('ChiTietDanhSachKham')}"
+            )
+        else:
+            connection.exec_driver_sql(
+                f"ALTER TABLE {quote('DanhSachKham')} RENAME TO {quote(backup_name)}"
+            )
+            connection.exec_driver_sql(
+                f"ALTER TABLE {quote(stage_day_name)} RENAME TO {quote('DanhSachKham')}"
+            )
+            connection.exec_driver_sql(
+                f"ALTER TABLE {quote(stage_detail_name)} "
+                f"RENAME TO {quote('ChiTietDanhSachKham')}"
+            )
+
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+            try:
+                with connection.begin():
+                    copy_and_swap(connection)
+            finally:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
+            violations = connection.exec_driver_sql("PRAGMA foreign_key_check").all()
+            if violations:
+                raise ValueError(
+                    "Foreign-key violations found after migration; inspect the database."
+                )
+    else:
+        with engine.begin() as connection:
+            copy_and_swap(connection)
+    return True

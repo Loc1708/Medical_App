@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
+from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -97,6 +98,7 @@ class NhanVien(db.Model):
     maTK: Mapped[int] = mapped_column("MaTK", db.ForeignKey("TaiKhoan.MaTK"), unique=True, nullable=False)
     taiKhoan: Mapped[TaiKhoan] = relationship(back_populates="nhanVien")
     bacSi: Mapped[BacSi | None] = relationship(back_populates="nhanVien", uselist=False)
+    danhSachKhams: Mapped[list[DanhSachKham]] = relationship(back_populates="nhanVien")
 
     @property
     def maHienThi(self) -> str:
@@ -135,30 +137,64 @@ class BenhNhan(db.Model):
         return f"BN-{self.maBN:04d}"
 
     phieuKhams: Mapped[list[PhieuKham]] = relationship(back_populates="benhNhan")
-    dangKyKhams: Mapped[list[DanhSachKham]] = relationship(back_populates="benhNhan")
+    dangKyKhams: Mapped[list[ChiTietDanhSachKham]] = relationship(back_populates="benhNhan")
 
 
 class DanhSachKham(db.Model):
     __tablename__ = "DanhSachKham"
     __table_args__ = (
-        db.Index(
-            "uq_dskham_ngay_thu_tu", "NgayKham", "SoThuTu", unique=True,
-        ),
-        db.Index("ix_dskham_ngay_trang_thai", "NgayKham", "TrangThai"),
+        UniqueConstraint("NgayKham", name="uq_dskham_ngay"),
+        UniqueConstraint("MaDSKham", "NgayKham", name="uq_dskham_id_ngay"),
         {"sqlite_autoincrement": True},
     )
 
     maDSKham: Mapped[int] = mapped_column("MaDSKham", db.Integer, primary_key=True, autoincrement=True)
-    maBN: Mapped[int] = mapped_column("MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False)
-    hoTen: Mapped[str] = mapped_column("HoTen", db.String(100), nullable=False)
-    gioiTinh: Mapped[str] = mapped_column("GioiTinh", db.String(10), nullable=False)
-    namSinh: Mapped[int] = mapped_column("NamSinh", db.Integer, nullable=False)
-    diaChi: Mapped[str] = mapped_column("DiaChi", db.String(255), nullable=False)
+    ngayKham: Mapped[date] = mapped_column("NgayKham", db.Date, nullable=False)
+    maNV: Mapped[int | None] = mapped_column(
+        "MaNV", db.ForeignKey("NhanVien.MaNV"), nullable=True,
+    )
+    nhanVien: Mapped[NhanVien | None] = relationship(back_populates="danhSachKhams")
+    benhNhans: Mapped[list[BenhNhan]] = relationship(
+        secondary="ChiTietDanhSachKham",
+        viewonly=True,
+    )
+    chiTietDanhSachKhams: Mapped[list[ChiTietDanhSachKham]] = relationship(
+        back_populates="danhSachKham",
+    )
+
+
+class ChiTietDanhSachKham(db.Model):
+    __tablename__ = "ChiTietDanhSachKham"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["MaDSKham", "NgayKham"],
+            ["DanhSachKham.MaDSKham", "DanhSachKham.NgayKham"],
+            name="fk_ctdsk_list_date",
+        ),
+        db.Index("uq_ctdsk_ngay_thu_tu", "NgayKham", "SoThuTu", unique=True),
+        db.Index("ix_ctdsk_ngay_trang_thai", "NgayKham", "TrangThai"),
+        {"sqlite_autoincrement": True},
+    )
+
+    maCTDSKham: Mapped[int] = mapped_column(
+        "MaCTDSKham", db.Integer, primary_key=True, autoincrement=True,
+    )
+    maDSKham: Mapped[int] = mapped_column("MaDSKham", db.Integer, nullable=False)
+    maBN: Mapped[int] = mapped_column(
+        "MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False,
+    )
     ngayKham: Mapped[date] = mapped_column("NgayKham", db.Date, nullable=False)
     soThuTu: Mapped[int | None] = mapped_column("SoThuTu", db.Integer, nullable=True)
     ngayDangKy: Mapped[datetime] = mapped_column("NgayDangKy", db.DateTime, nullable=False)
     trangThai: Mapped[str] = mapped_column(
         "TrangThai", db.String(20), nullable=False, default="CHO_KHAM",
+    )
+    hoTen: Mapped[str] = mapped_column("HoTen", db.String(100), nullable=False)
+    gioiTinh: Mapped[str] = mapped_column("GioiTinh", db.String(10), nullable=False)
+    namSinh: Mapped[int] = mapped_column("NamSinh", db.Integer, nullable=False)
+    diaChi: Mapped[str] = mapped_column("DiaChi", db.String(255), nullable=False)
+    danhSachKham: Mapped[DanhSachKham] = relationship(
+        back_populates="chiTietDanhSachKhams",
     )
     benhNhan: Mapped[BenhNhan] = relationship(back_populates="dangKyKhams")
 

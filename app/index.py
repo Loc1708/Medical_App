@@ -76,7 +76,12 @@ def dashboard():
         exam_date = datetime.now(clinic_timezone).date()
         return render_template("doctor/dashboard.html", exam_date=exam_date)
     if current_user.role == Role.NURSE:
-        return render_template("nurse/dashboard.html", current_year=date.today().year)
+        clinic_today = dao.clinic_today()
+        return render_template(
+            "nurse/dashboard.html",
+            current_year=clinic_today.year,
+            exam_date=clinic_today.isoformat(),
+        )
     if current_user.role == Role.PATIENT:
         return _render_patient_dashboard()
     template = {
@@ -189,7 +194,7 @@ def _nurse_exam_payload(payload: object) -> dict:
 
 def _nurse_exam_json(registration) -> dict:
     return {
-        "id": registration.maDSKham,
+        "id": registration.maCTDSKham,
         "name": registration.hoTen,
         "gender": registration.gioiTinh,
         "birthYear": registration.namSinh,
@@ -197,6 +202,7 @@ def _nurse_exam_json(registration) -> dict:
         "address": registration.diaChi,
         "status": registration.trangThai,
         "slot": registration.soThuTu,
+        "examDate": registration.ngayKham.isoformat(),
     }
 
 
@@ -224,6 +230,7 @@ def nurse_exam_lists():
         waiting=[_nurse_exam_json(entry) for entry in waiting],
         history=history,
         confirmed=confirmed,
+        today=dao.clinic_today().isoformat(),
     )
 
 
@@ -234,7 +241,12 @@ def nurse_create_exam():
         payload = request.get_json(silent=True)
         data = _nurse_exam_payload(payload)
         exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
-        registration = dao.create_nurse_exam(exam_date=exam_date, **data)
+        nurse = current_user.nhanVien
+        registration = dao.create_nurse_exam(
+            exam_date=exam_date,
+            nurse_id=nurse.maNV if nurse else None,
+            **data,
+        )
     except ValueError as error:
         db.session.rollback()
         return jsonify(error=str(error)), 409 if isinstance(error, dao.DailyCapacityReached) else 400
@@ -286,7 +298,16 @@ def nurse_cancel_exam(registration_id: int):
 @roles_required(Role.NURSE)
 def nurse_approve_exam(registration_id: int):
     try:
-        registration = dao.approve_waiting_nurse_exam(registration_id)
+        payload = request.get_json(silent=True)
+        target_date = _nurse_exam_date(
+            payload.get("date") if isinstance(payload, dict) else None
+        )
+        nurse = current_user.nhanVien
+        registration = dao.approve_waiting_nurse_exam(
+            registration_id,
+            target_date,
+            nurse_id=nurse.maNV if nurse else None,
+        )
     except LookupError as error:
         return jsonify(error=str(error)), 404
     except dao.DailyCapacityReached as error:
@@ -299,7 +320,13 @@ def nurse_approve_exam(registration_id: int):
         db.session.rollback()
         app.logger.exception("Nurse waiting-list approval failed.")
         return jsonify(error="Không thể duyệt bệnh nhân trong cơ sở dữ liệu."), 500
-    return jsonify(patient=_nurse_exam_json(registration), message="Đã duyệt bệnh nhân vào danh sách khám.")
+    return jsonify(
+        patient=_nurse_exam_json(registration),
+        message=(
+            "Đã duyệt bệnh nhân vào danh sách khám ngày "
+            f"{registration.ngayKham.strftime('%d/%m/%Y')}."
+        ),
+    )
 
 
 @app.post("/nurse/api/lists/confirm")
@@ -308,7 +335,11 @@ def nurse_confirm_exam_day():
     try:
         payload = request.get_json(silent=True)
         exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
-        confirmed_count = dao.confirm_nurse_exam_day(exam_date)
+        nurse = current_user.nhanVien
+        confirmed_count = dao.confirm_nurse_exam_day(
+            exam_date,
+            nurse_id=nurse.maNV if nurse else None,
+        )
     except ValueError as error:
         db.session.rollback()
         return jsonify(error=str(error)), 409

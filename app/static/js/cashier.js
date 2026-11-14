@@ -1,3 +1,6 @@
+let receiptPaidState = 'DA_THANH_TOAN';
+let receiptUnpaidState = 'CHUA_THANH_TOAN';
+
 function searchPatientByCode() {
     let kw = document.getElementById('kw').value.trim();
     let list = document.getElementById('list');
@@ -55,17 +58,15 @@ let currentReceipt = [];
 function getUnpaidReceiptsList(patientCode) {
     let dropdown = document.getElementById('receipts_list');
     
-
-    fetch(`/cashier/api/receipts?ma_bn=${encodeURIComponent(patientCode)}`)
-        .then(response => {
+    fetch(`/cashier/api/receipts?ma_bn=${encodeURIComponent(patientCode)}`).then(response => {
             if (!response.ok) {
                 return response.json().then(err => {
                     throw new Error(err.error || 'Lỗi tải dữ liệu');
                 });
             }
             return response.json();
-        })
-        .then(data => {
+
+        }).then(data => {
             currentReceipt = data.receipts || [];
             let html = '<option value="">-- Chọn hóa đơn cần thanh toán --</option>';
 
@@ -74,11 +75,10 @@ function getUnpaidReceiptsList(patientCode) {
                             HĐ #${r.id} - Ngày khám: ${r.date} - Tổng: ${r.total.toLocaleString('vi-VN')} VNĐ
                          </option>`;
             });
-
             dropdown.innerHTML = html;
             updateReceiptForm(null);
-        })
-        .catch(err => {
+
+        }).catch(err => {
             dropdown.innerHTML = `<option value="">${err.message}</option>`;
         });
 }
@@ -111,4 +111,26 @@ function resetCashierForm() {
 
     currentReceipt = [];
     updateReceiptForm(null);
+}
+
+function payReceipt() {
+    let id = document.getElementById('receipts_list').value;
+    if (!id) return;
+
+    fetch('/cashier/api/receipts/pay', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content          
+        },
+        body: JSON.stringify({ id: id })
+    }).then(response => response.json().then(data => {
+            if (!response.ok) {
+                throw new Error(data.error || 'Lỗi thanh toán');
+            }
+            return data;
+        })).then(data => {
+            alert(data.message);
+            resetCashierForm();
+        }).catch(err => alert(err.message));
 }

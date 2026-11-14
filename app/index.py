@@ -575,7 +575,17 @@ def get_unpaid_receipts_list():
             "total": hd.tongTien
         })
     return jsonify(receipts=result) 
-  
+
+@app.route('/cashier/api/receipts/pay', methods=['post'])
+@roles_required(Role.CASHIER)
+def pay_receipt_api():
+    data = request.get_json(silent=True) or {}
+    hd = dao.pay_receipt(data.get('id'))
+
+    if hd is None:
+        return jsonify(error="Hóa đơn không tồn tại hoặc đã thanh toán."), 400
+    return jsonify(message="Thanh toán thành công.")
+
 @app.errorhandler(SQLAlchemyError)
 def database_error(_error):
     db.session.rollback()

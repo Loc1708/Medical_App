@@ -121,7 +121,7 @@
                 <span class="doctor-step">02</span>
                 <div>
                     <h2 class="h5 mb-1" id="medicine-heading">Tra cứu thuốc</h2>
-                    <p class="text-muted mb-0">Tìm thuốc để thêm vào đơn thuốc.</p>
+                    <p class="text-muted mb-0">Danh sách thuốc còn hàng được tải tự động. Nhập ít nhất 2 ký tự để lọc theo một phần tên hoặc mã thuốc.</p>
                 </div>
             </div>
             <span class="doctor-outline-badge">Thuốc còn tồn kho</span>
@@ -129,7 +129,7 @@
         <div class="doctor-search-row doctor-medicine-search">
             <label class="visually-hidden" for="medicine-query">Tên thuốc</label>
             <input class="form-control" id="medicine-query" type="search"
-                   placeholder="Tìm theo tên thuốc" autocomplete="off">
+                   placeholder="Nhập một phần tên hoặc mã thuốc" autocomplete="off">
             <button class="btn btn-outline-primary" type="button"
                     data-medicine-search>
                 Tìm thuốc
@@ -144,15 +144,21 @@
                         <th scope="col">Tên thuốc</th>
                         <th scope="col">Đơn vị</th>
                         <th scope="col">Số lượng</th>
+                        <th scope="col">Đơn giá</th>
                         <th scope="col">Thao tác</th>
                     </tr>
                 </thead>
                 <tbody id="medicine-results">
                     <tr>
-                        <td colspan="5" class="doctor-table-empty">Nhập ít nhất 2 ký tự để tìm thuốc.</td>
+                        <td colspan="6" class="doctor-table-empty">Đang tải danh sách thuốc...</td>
                     </tr>
                 </tbody>
             </table>
+        </div>
+        <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 pt-3">
+            <span class="text-muted small" data-medicine-summary>Đang tải danh sách thuốc...</span>
+            <nav class="d-flex flex-wrap justify-content-end gap-2"
+                 data-medicine-pagination aria-label="Phân trang danh sách thuốc"></nav>
         </div>
     </section>
 

@@ -476,16 +476,25 @@ def doctor_delete_draft(exam_id: str):
 @roles_required(Role.DOCTOR)
 def doctor_search_medicines():
     keyword = request.args.get("q", "").strip()
+    raw_page = request.args.get("page", "1")
+    if not re.fullmatch(r"[0-9]{1,6}", raw_page) or int(raw_page) < 1:
+        return jsonify(error="Số trang không hợp lệ."), 400
+    page = int(raw_page)
     if len(keyword) < 2:
-        return jsonify(medicines=[])
-    medicines = dao.search_medicines(keyword)
+        if keyword:
+            return jsonify(
+                medicines=[], page=page, page_size=10, total=0, pages=0,
+            )
+        keyword = ""
+    medicines, total = dao.search_medicines(keyword, page=page)
     return jsonify(medicines=[{
         "code": medicine.maThuoc,
         "name": medicine.tenThuoc,
         "unit": medicine.donVi.tenDonVi,
         "stock": medicine.soLuongTon,
         "price": medicine.donGia,
-    } for medicine in medicines])
+    } for medicine in medicines], page=page, page_size=10, total=total,
+        pages=(total + 9) // 10)
 
 
 @app.post("/doctor/api/exams")

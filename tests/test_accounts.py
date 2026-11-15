@@ -284,7 +284,8 @@ class AccountTests(unittest.TestCase):
             "Thông tin khám", "Đơn thuốc", "Xem lịch sử khám",
         ):
             self.assertIn(label, html)
-        self.assertIn("Nhập ít nhất 2 ký tự để tìm thuốc.", html)
+        self.assertIn("Danh sách thuốc còn hàng được tải tự động.", html)
+        self.assertIn("data-medicine-pagination", html)
         self.assertIn("Dữ liệu thử nghiệm", html)
         self.assertNotIn("Nguyễn Văn An", html)
         self.assertIn(
@@ -312,12 +313,16 @@ class AccountTests(unittest.TestCase):
             maThuoc="MED-1", tenThuoc="Thuốc kiểm thử", donGia=1000,
             soLuongTon=10, donVi=unit,
         )
+        out_of_stock = Thuoc(
+            maThuoc="MED-2", tenThuoc="Thuốc kiểm thử hết hàng", donGia=2000,
+            soLuongTon=0, donVi=unit,
+        )
         prior_exam = PhieuKham(
             maPhieuKham="PRIOR-1", ngayKham=date(2026, 1, 1),
             trieuChung="Lượt khám kiểm thử trước", benhNhan=patient.benhNhan,
             bacSi=doctor.nhanVien.bacSi,
         )
-        db.session.add_all([unit, medicine, prior_exam])
+        db.session.add_all([unit, medicine, out_of_stock, prior_exam])
         db.session.commit()
         self.sign_in("doctor_flow")
 
@@ -345,6 +350,17 @@ class AccountTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in history.json["exams"]], ["PRIOR-1"])
         medicines = self.client.get("/doctor/api/medicines?q=kiểm thử")
         self.assertEqual([row["code"] for row in medicines.json["medicines"]], ["MED-1"])
+        partial_name = self.client.get("/doctor/api/medicines?q=kiểm")
+        self.assertEqual([row["code"] for row in partial_name.json["medicines"]], ["MED-1"])
+        partial_code = self.client.get("/doctor/api/medicines?q=ed-1")
+        self.assertEqual([row["code"] for row in partial_code.json["medicines"]], ["MED-1"])
+        self.assertEqual(partial_code.json["medicines"][0]["price"], 1000)
+        all_medicines = self.client.get("/doctor/api/medicines")
+        self.assertEqual(all_medicines.json["total"], 1)
+        self.assertEqual(all_medicines.json["pages"], 1)
+        self.assertEqual(
+            self.client.get("/doctor/api/medicines?page=0").status_code, 400
+        )
 
         dashboard = self.client.get("/dashboard")
         csrf = dashboard.get_data(as_text=True).split(
@@ -366,6 +382,42 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(
             len(self.client.get(f"/doctor/api/patients/{patient_code}/history").json["exams"]),
             2,
+        )
+
+    def test_doctor_medicine_catalog_paginates_and_filters_with_contains(self):
+        dao.create_account(self.data("medicine_page_doctor", Role.DOCTOR))
+        unit = DonViThuoc(maDonVi="PAGE-UNIT", tenDonVi="Viên")
+        medicines = [
+            Thuoc(
+                maThuoc=f"PAGE-{index:02d}",
+                tenThuoc=f"Thuốc phân trang {index:02d}",
+                donGia=1000 + index,
+                soLuongTon=0 if index == 11 else 5,
+                donVi=unit,
+            )
+            for index in range(12)
+        ]
+        db.session.add_all([unit, *medicines])
+        db.session.commit()
+        self.sign_in("medicine_page_doctor")
+
+        first_page = self.client.get("/doctor/api/medicines")
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.json["total"], 11)
+        self.assertEqual(first_page.json["page"], 1)
+        self.assertEqual(first_page.json["pages"], 2)
+        self.assertEqual(len(first_page.json["medicines"]), 10)
+
+        second_page = self.client.get("/doctor/api/medicines?page=2")
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(
+            [row["code"] for row in second_page.json["medicines"]], ["PAGE-10"]
+        )
+
+        filtered = self.client.get("/doctor/api/medicines?q=trang&page=2")
+        self.assertEqual(filtered.json["total"], 11)
+        self.assertEqual(
+            [row["code"] for row in filtered.json["medicines"]], ["PAGE-10"]
         )
 
     def test_doctor_can_save_resume_update_and_finalize_only_own_draft(self):

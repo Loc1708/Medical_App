@@ -77,16 +77,32 @@ def pay_receipt(ma_hd):
     db.session.commit()              # luu xuong database
     return hd
 
-def search_medicines(keyword: str, *, limit: int = 30) -> list[Thuoc]:
-    keyword = keyword.strip()
-    if not keyword:
-        return []
+def search_medicines(
+    keyword: str = "",
+    *,
+    page: int = 1,
+    page_size: int = 10,
+) -> tuple[list[Thuoc], int]:
+    keyword = keyword.strip()[:100]
+    if page < 1 or not 1 <= page_size <= 100:
+        raise ValueError("Số trang hoặc số dòng mỗi trang không hợp lệ.")
+    conditions = [Thuoc.soLuongTon > 0]
+    if keyword:
+        search_term = keyword.lower()
+        conditions.append(or_(
+            db.func.lower(Thuoc.tenThuoc).contains(search_term, autoescape=True),
+            db.func.lower(Thuoc.maThuoc).contains(search_term, autoescape=True),
+        ))
+    total = db.session.scalar(
+        db.select(db.func.count()).select_from(Thuoc).where(*conditions)
+    ) or 0
     return list(db.session.scalars(
         db.select(Thuoc)
-        .where(Thuoc.tenThuoc.contains(keyword, autoescape=True), Thuoc.soLuongTon > 0)
+        .where(*conditions)
         .order_by(Thuoc.tenThuoc, Thuoc.maThuoc)
-        .limit(limit)
-    ))
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )), total
 
 
 def patient_exam_history(patient_id: int) -> list[PhieuKham]:

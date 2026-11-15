@@ -39,6 +39,8 @@ if (doctorStatus) {
     const historyRows = document.querySelector("#patient-history-rows");
     const medicineQuery = document.querySelector("#medicine-query");
     const medicineResults = document.querySelector("#medicine-results");
+    const medicineSummary = document.querySelector("[data-medicine-summary]");
+    const medicinePagination = document.querySelector("[data-medicine-pagination]");
     const prescriptionItems = document.querySelector("#prescription-items");
     const draftsPanel = document.querySelector("#doctor-drafts");
     const draftsRows = document.querySelector("[data-drafts-rows]");
@@ -53,6 +55,7 @@ if (doctorStatus) {
     let autosaveRequestActive = false;
     let draftDirty = false;
     let draftRevision = 0;
+    let medicineRequestId = 0;
     const activeDraftStorageKey = "medical-app-doctor-active-draft";
 
     function showDoctorStatus(message, isError = false) {
@@ -320,48 +323,98 @@ if (doctorStatus) {
         }
     }
 
-    async function searchMedicines() {
+    function renderMedicinePagination(page, pages) {
+        medicinePagination.replaceChildren();
+        if (pages <= 1) return;
+
+        function addPageButton(label, target, disabled = false, current = false) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = current
+                ? "btn btn-sm btn-primary"
+                : "btn btn-sm btn-outline-primary";
+            button.textContent = label;
+            button.dataset.medicinePage = String(target);
+            button.disabled = disabled;
+            if (current) button.setAttribute("aria-current", "page");
+            medicinePagination.append(button);
+        }
+
+        addPageButton("‹ Trước", page - 1, page === 1);
+        const firstPage = Math.max(1, Math.min(page - 2, pages - 4));
+        const lastPage = Math.min(pages, firstPage + 4);
+        for (let target = firstPage; target <= lastPage; target += 1) {
+            addPageButton(String(target), target, false, target === page);
+        }
+        addPageButton("Sau ›", page + 1, page === pages);
+    }
+
+    async function searchMedicines(page = 1) {
         const keyword = medicineQuery.value.trim();
+        const requestId = ++medicineRequestId;
         medicineResults.replaceChildren();
-        if (keyword.length < 2) {
+        if (keyword && keyword.length < 2) {
             const row = document.createElement("tr");
             const cell = addCell(row, "Nhập ít nhất 2 ký tự để tìm thuốc.");
-            cell.colSpan = 5;
+            cell.colSpan = 6;
             cell.className = "doctor-table-empty";
             medicineResults.append(row);
+            medicineSummary.textContent = "Nhập ít nhất 2 ký tự để tìm thuốc.";
+            medicinePagination.replaceChildren();
             return;
         }
+        medicineSummary.textContent = "Đang tải danh sách thuốc...";
         try {
-            const response = await fetch(
-                `/doctor/api/medicines?q=${encodeURIComponent(keyword)}`
-            );
+            const url = new URL("/doctor/api/medicines", window.location.origin);
+            url.searchParams.set("page", String(page));
+            if (keyword) url.searchParams.set("q", keyword);
+            const response = await fetch(url);
             const data = await readJson(response);
+            if (requestId !== medicineRequestId) return;
             if (!data.medicines.length) {
                 const row = document.createElement("tr");
-                const cell = addCell(row, "Không tìm thấy thuốc còn tồn kho phù hợp.");
-                cell.colSpan = 5;
+                const cell = addCell(
+                    row,
+                    keyword
+                        ? "Không tìm thấy thuốc còn tồn kho phù hợp."
+                        : "Chưa có thuốc nào còn tồn kho."
+                );
+                cell.colSpan = 6;
                 cell.className = "doctor-table-empty";
                 medicineResults.append(row);
-                return;
+            } else {
+                data.medicines.forEach(medicine => {
+                    const row = document.createElement("tr");
+                    addCell(row, medicine.code);
+                    addCell(row, medicine.name);
+                    addCell(row, medicine.unit);
+                    addCell(row, String(medicine.stock));
+                    addCell(
+                        row,
+                        `${new Intl.NumberFormat("vi-VN").format(medicine.price)} VNĐ`
+                    );
+                    const action = document.createElement("td");
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.className = "btn btn-outline-primary btn-sm";
+                    button.dataset.addMedicine = medicine.code;
+                    button.textContent = "Thêm";
+                    action.append(button);
+                    row.append(action);
+                    medicineResults.append(row);
+                });
             }
-            data.medicines.forEach(medicine => {
-                const row = document.createElement("tr");
-                addCell(row, medicine.code);
-                addCell(row, medicine.name);
-                addCell(row, medicine.unit);
-                addCell(row, String(medicine.stock));
-                const action = document.createElement("td");
-                const button = document.createElement("button");
-                button.type = "button";
-                button.className = "btn btn-outline-primary btn-sm";
-                button.dataset.addMedicine = medicine.code;
-                button.textContent = "Thêm";
-                action.append(button);
-                row.append(action);
-                medicineResults.append(row);
-            });
+            const first = data.total ? (data.page - 1) * data.page_size + 1 : 0;
+            const last = Math.min(data.page * data.page_size, data.total);
+            medicineSummary.textContent = data.total
+                ? `Hiển thị ${first}–${last} trên ${data.total} thuốc`
+                : "Không có thuốc phù hợp.";
+            renderMedicinePagination(data.page, data.pages);
         } catch (error) {
-            showDoctorStatus(error.message, true);
+            if (requestId === medicineRequestId) {
+                medicineSummary.textContent = "Không tải được danh sách thuốc.";
+                showDoctorStatus(error.message, true);
+            }
         }
     }
 
@@ -469,6 +522,7 @@ if (doctorStatus) {
         const searchButton = event.target.closest("[data-patient-search]");
         const historyButton = event.target.closest("[data-patient-history]");
         const medicineButton = event.target.closest("[data-medicine-search]");
+        const medicinePageButton = event.target.closest("[data-medicine-page]");
         const addButton = event.target.closest("[data-add-medicine]");
         const editMedicineButton = event.target.closest("[data-edit-medicine]");
         const removeMedicineButton = event.target.closest("[data-remove-medicine]");
@@ -496,7 +550,11 @@ if (doctorStatus) {
             return;
         }
         if (medicineButton) {
-            searchMedicines();
+            searchMedicines(1);
+            return;
+        }
+        if (medicinePageButton && !medicinePageButton.disabled) {
+            searchMedicines(Number(medicinePageButton.dataset.medicinePage));
             return;
         }
         if (resumeButton) {
@@ -662,6 +720,7 @@ if (doctorStatus) {
 
     loadDoctorDrafts();
     restoreActiveDraft();
+    searchMedicines();
 
     document.addEventListener("keydown", event => {
         if (event.key !== "Enter") return;

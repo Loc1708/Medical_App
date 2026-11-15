@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import or_, cast, String
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from app import app, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
@@ -144,12 +144,31 @@ def search_medicines(
     )), total
 
 
-def patient_exam_history(patient_id: int) -> list[PhieuKham]:
-    return list(db.session.scalars(
+def patient_exam_history(
+    patient_id: int,
+    *,
+    page: int = 1,
+    page_size: int = 5,
+) -> tuple[list[PhieuKham], int]:
+    total = db.session.scalar(
+        db.select(db.func.count())
+        .select_from(PhieuKham)
+        .where(PhieuKham.maBN == patient_id)
+    ) or 0
+    exams = list(db.session.scalars(
         db.select(PhieuKham)
+        .options(
+            joinedload(PhieuKham.bacSi).joinedload(BacSi.nhanVien),
+            selectinload(PhieuKham.chiTietDonThuocs)
+            .joinedload(ChiTietDonThuoc.thuoc)
+            .joinedload(Thuoc.donVi),
+        )
         .where(PhieuKham.maBN == patient_id)
         .order_by(PhieuKham.ngayKham.desc(), PhieuKham.maPhieuKham.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     ))
+    return exams, total
 
 
 def patient_exam_registrations(patient_id: int) -> list[ChiTietDanhSachKham]:

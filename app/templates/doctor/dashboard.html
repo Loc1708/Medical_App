@@ -92,21 +92,29 @@
             <p class="doctor-history-prompt mb-0" id="patient-history-message">
                 Chưa nhập mã bệnh nhân. Vui lòng nhập mã bệnh nhân để xem danh sách phiếu khám.
             </p>
-            <div class="table-responsive" id="patient-history-table" hidden>
-                <table class="table align-middle doctor-table mb-0">
-                    <thead>
-                        <tr>
-                            <th scope="col">Ngày khám</th>
-                            <th scope="col">Mã phiếu</th>
-                            <th scope="col">Triệu chứng</th>
-                            <th scope="col">Bác sĩ</th>
-                            <th scope="col">Số thuốc</th>
-                            <th scope="col">Trạng thái</th>
-                            <th scope="col">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody id="patient-history-rows"></tbody>
-                </table>
+            <div id="patient-history-table" hidden>
+                <div class="table-responsive">
+                    <table class="table align-middle doctor-table mb-0">
+                        <thead>
+                            <tr>
+                                <th scope="col">Ngày khám</th>
+                                <th scope="col">Mã phiếu</th>
+                                <th scope="col">Triệu chứng</th>
+                                <th scope="col">Bác sĩ</th>
+                                <th scope="col">Số thuốc</th>
+                                <th scope="col">Trạng thái</th>
+                                <th scope="col">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody id="patient-history-rows"></tbody>
+                    </table>
+                </div>
+                <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 pt-3">
+                    <span class="text-muted small" data-history-summary></span>
+                    <nav class="d-flex flex-wrap justify-content-end gap-2"
+                         data-patient-history-pagination
+                         aria-label="Phân trang lịch sử khám"></nav>
+                </div>
             </div>
         </div>
     </section>

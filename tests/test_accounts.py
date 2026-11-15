@@ -309,6 +309,7 @@ class AccountTests(unittest.TestCase):
             self.assertIn(label, html)
         self.assertIn("Danh sách thuốc còn hàng được tải tự động.", html)
         self.assertIn("data-medicine-pagination", html)
+        self.assertIn("data-patient-history-pagination", html)
         self.assertNotIn("Dữ liệu thử nghiệm", html)
         self.assertNotIn("Nguyễn Văn An", html)
         self.assertIn(
@@ -371,6 +372,7 @@ class AccountTests(unittest.TestCase):
 
         history = self.client.get(f"/doctor/api/patients/{patient_code}/history")
         self.assertEqual([row["id"] for row in history.json["exams"]], ["PRIOR-1"])
+        self.assertEqual(history.json["page_size"], 5)
         medicines = self.client.get("/doctor/api/medicines?q=kiểm thử")
         self.assertEqual([row["code"] for row in medicines.json["medicines"]], ["MED-1"])
         partial_name = self.client.get("/doctor/api/medicines?q=kiểm")
@@ -417,10 +419,73 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(saved.json["invoice_id"], invoice.maHoaDon)
         self.assertEqual(saved.json["invoice_total"], 102000)
         self.assertEqual(medicine.soLuongTon, 8)
-        self.assertEqual(
-            len(self.client.get(f"/doctor/api/patients/{patient_code}/history").json["exams"]),
-            2,
+        history = self.client.get(
+            f"/doctor/api/patients/{patient_code}/history"
+        ).json
+        self.assertEqual(len(history["exams"]), 2)
+        self.assertEqual(history["exams"][0]["id"], saved.json["exam_id"])
+        self.assertEqual(history["exams"][0]["prescriptions"], [{
+            "code": "MED-1",
+            "name": "Thuốc kiểm thử",
+            "unit": "Viên",
+            "quantity": 2,
+            "instructions": "Cách dùng kiểm thử",
+        }])
+
+    def test_doctor_history_api_paginates_five_exams_and_returns_prescriptions(self):
+        doctor = dao.create_account(self.data("history_page_doctor", Role.DOCTOR))
+        patient = dao.create_account(self.data("history_page_patient", Role.PATIENT))
+        unit = DonViThuoc(maDonVi="HISTORY-UNIT", tenDonVi="Viên")
+        medicine = Thuoc(
+            maThuoc="HISTORY-MED", tenThuoc="Thuốc lịch sử", donGia=1000,
+            soLuongTon=100, donVi=unit,
         )
+        db.session.add_all([unit, medicine])
+        for index in range(6):
+            exam = PhieuKham(
+                maPhieuKham=f"HISTORY-{index}",
+                ngayKham=date(2026, 1, 1) + timedelta(days=index),
+                trieuChung=f"Triệu chứng {index}",
+                benhNhan=patient.benhNhan,
+                bacSi=doctor.nhanVien.bacSi,
+            )
+            exam.chiTietDonThuocs.append(ChiTietDonThuoc(
+                thuoc=medicine,
+                soLuong=index + 1,
+                cachDung=f"Cách dùng {index}",
+            ))
+            db.session.add(exam)
+        db.session.commit()
+        self.sign_in("history_page_doctor")
+
+        patient_code = patient.benhNhan.maHienThi
+        first_page = self.client.get(
+            f"/doctor/api/patients/{patient_code}/history?page=1"
+        )
+        second_page = self.client.get(
+            f"/doctor/api/patients/{patient_code}/history?page=2"
+        )
+        invalid_page = self.client.get(
+            f"/doctor/api/patients/{patient_code}/history?page=0"
+        )
+
+        self.assertEqual(first_page.status_code, 200)
+        self.assertEqual(first_page.json["total"], 6)
+        self.assertEqual(first_page.json["pages"], 2)
+        self.assertEqual(first_page.json["page_size"], 5)
+        self.assertEqual(len(first_page.json["exams"]), 5)
+        self.assertEqual(first_page.json["exams"][0]["id"], "HISTORY-5")
+        self.assertEqual(first_page.json["exams"][0]["prescriptions"][0], {
+            "code": "HISTORY-MED",
+            "name": "Thuốc lịch sử",
+            "unit": "Viên",
+            "quantity": 6,
+            "instructions": "Cách dùng 5",
+        })
+        self.assertEqual(second_page.status_code, 200)
+        self.assertEqual(second_page.json["page"], 2)
+        self.assertEqual([exam["id"] for exam in second_page.json["exams"]], ["HISTORY-0"])
+        self.assertEqual(invalid_page.status_code, 400)
 
     def test_doctor_medicine_catalog_paginates_and_filters_with_contains(self):
         dao.create_account(self.data("medicine_page_doctor", Role.DOCTOR))

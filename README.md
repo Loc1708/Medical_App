@@ -343,6 +343,7 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
 - Bổ sung `TaiKhoan.trangThai` theo xác nhận để khóa/mở tài khoản.
 - Luồng bác sĩ đã có route/DAO để tra cứu bệnh nhân theo mã, xem lịch sử,
   tra thuốc, lưu/cập nhật/tiếp tục bản nháp của chính bác sĩ đang đăng nhập,
+  xem chi tiết đơn thuốc trong từng phiếu lịch sử (5 phiếu mỗi trang),
   và lập phiếu khám hoàn chỉnh kèm chi tiết đơn thuốc. Bản nháp được cập nhật
   thành phiếu đã lập thay vì tạo thêm lịch sử trùng lặp; hồ sơ và chi tiết thuốc
   được lưu trên database cấu hình hiện tại. Biểu mẫu đang làm được tự lưu thành

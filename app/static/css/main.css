@@ -124,6 +124,7 @@ main { flex: 1; }
 .doctor-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .doctor-history-heading h3 { color: var(--ink); }
 .doctor-history-heading p { font-size: .85rem; }
+.doctor-history-actions { display: flex; flex-wrap: wrap; gap: 6px; white-space: nowrap; }
 .doctor-history-prompt { margin-top: 16px; padding: 14px 16px; border-radius: 8px; background: #f4f9f7; color: var(--muted); font-size: .9rem; }
 .doctor-table { font-size: .875rem; }
 .doctor-table > :not(caption) > * > * { padding: 12px 14px; }

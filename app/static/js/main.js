@@ -37,6 +37,8 @@ if (doctorStatus) {
     const patientCard = document.querySelector("#patient-card");
     const historyTable = document.querySelector("#patient-history-table");
     const historyRows = document.querySelector("#patient-history-rows");
+    const historySummary = document.querySelector("[data-history-summary]");
+    const historyPagination = document.querySelector("[data-patient-history-pagination]");
     const medicineQuery = document.querySelector("#medicine-query");
     const medicineResults = document.querySelector("#medicine-results");
     const medicineSummary = document.querySelector("[data-medicine-summary]");
@@ -48,6 +50,9 @@ if (doctorStatus) {
     const draftsTable = document.querySelector("[data-drafts-table]");
     const draftsCount = document.querySelector("[data-drafts-count]");
     const selectedMedicines = new Map();
+    const historyPageSize = 5;
+    let historyExams = [];
+    let historyRequestId = 0;
     let selectedPatientCode = "";
     let currentDraftId = null;
     let autosaveTimer = null;
@@ -66,6 +71,11 @@ if (doctorStatus) {
     }
 
     function showPatientHistoryMessage(message) {
+        historyRequestId += 1;
+        historyExams = [];
+        historyRows.replaceChildren();
+        historySummary.textContent = "";
+        historyPagination.replaceChildren();
         patientHistoryMessage.textContent = message;
         patientHistoryMessage.hidden = false;
         historyTable.hidden = true;
@@ -122,6 +132,134 @@ if (doctorStatus) {
         return cell;
     }
 
+    function renderHistoryPagination(page, pages) {
+        historyPagination.replaceChildren();
+        if (pages <= 1) return;
+
+        function addPageButton(label, target, disabled = false, current = false) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = current
+                ? "btn btn-sm btn-primary"
+                : "btn btn-sm btn-outline-primary";
+            button.textContent = label;
+            button.dataset.historyPage = String(target);
+            button.disabled = disabled;
+            if (current) button.setAttribute("aria-current", "page");
+            historyPagination.append(button);
+        }
+
+        addPageButton("‹ Trước", page - 1, page === 1);
+        const firstPage = Math.max(1, Math.min(page - 2, pages - 4));
+        const lastPage = Math.min(pages, firstPage + 4);
+        for (let target = firstPage; target <= lastPage; target += 1) {
+            addPageButton(String(target), target, false, target === page);
+        }
+        addPageButton("Sau ›", page + 1, page === pages);
+    }
+
+    function renderPatientHistory(data) {
+        historyExams = data.exams;
+        historyRows.replaceChildren();
+        historyExams.forEach(exam => {
+            const row = document.createElement("tr");
+            addCell(row, exam.date);
+            addCell(row, exam.id);
+            addCell(row, exam.symptoms);
+            addCell(row, exam.doctor);
+            addCell(row, String(exam.prescription_count));
+            addCell(row, exam.status === "NHAP" ? "Bản nháp" : "Đã lập");
+
+            const actionsCell = document.createElement("td");
+            const actions = document.createElement("div");
+            actions.className = "doctor-history-actions";
+            const detailsButton = document.createElement("button");
+            detailsButton.type = "button";
+            detailsButton.className = "btn btn-outline-primary btn-sm";
+            detailsButton.dataset.historyPrescriptions = exam.id;
+            detailsButton.setAttribute("aria-expanded", "false");
+            detailsButton.textContent = "Chi tiết đơn thuốc";
+            actions.append(detailsButton);
+            if (exam.can_resume) {
+                const resumeButton = document.createElement("button");
+                resumeButton.type = "button";
+                resumeButton.className = "btn btn-outline-primary btn-sm";
+                resumeButton.dataset.resumeDraft = exam.id;
+                resumeButton.textContent = "Tiếp tục";
+                actions.append(resumeButton);
+            }
+            actionsCell.append(actions);
+            row.append(actionsCell);
+            historyRows.append(row);
+        });
+
+        const first = data.total
+            ? (data.page - 1) * historyPageSize + 1
+            : 0;
+        const last = Math.min(data.page * historyPageSize, data.total);
+        historySummary.textContent =
+            `Hiển thị ${first}–${last} trên ${data.total} phiếu khám`;
+        renderHistoryPagination(data.page, data.pages);
+        patientHistoryMessage.hidden = true;
+        historyTable.hidden = false;
+    }
+
+    function toggleHistoryPrescriptions(button) {
+        const exam = historyExams.find(item => item.id === button.dataset.historyPrescriptions);
+        if (!exam) return;
+
+        const historyRow = button.closest("tr");
+        const nextRow = historyRow.nextElementSibling;
+        if (nextRow && nextRow.dataset.prescriptionDetails === exam.id) {
+            nextRow.remove();
+            button.textContent = "Chi tiết đơn thuốc";
+            button.setAttribute("aria-expanded", "false");
+            return;
+        }
+
+        const detailsRow = document.createElement("tr");
+        detailsRow.dataset.prescriptionDetails = exam.id;
+        const detailsCell = document.createElement("td");
+        detailsCell.colSpan = 7;
+        if (!exam.prescriptions.length) {
+            detailsCell.textContent = "Phiếu khám này không có thuốc được kê.";
+        } else {
+            const table = document.createElement("table");
+            table.className = "table table-sm align-middle doctor-table mb-0";
+            const caption = document.createElement("caption");
+            caption.textContent = `Đơn thuốc của phiếu ${exam.id}`;
+            table.append(caption);
+
+            const header = document.createElement("thead");
+            const headerRow = document.createElement("tr");
+            for (const label of ["Mã thuốc", "Tên thuốc", "Đơn vị", "Số lượng", "Cách dùng"]) {
+                const cell = document.createElement("th");
+                cell.scope = "col";
+                cell.textContent = label;
+                headerRow.append(cell);
+            }
+            header.append(headerRow);
+            table.append(header);
+
+            const body = document.createElement("tbody");
+            exam.prescriptions.forEach(prescription => {
+                const row = document.createElement("tr");
+                addCell(row, prescription.code);
+                addCell(row, prescription.name);
+                addCell(row, prescription.unit);
+                addCell(row, String(prescription.quantity));
+                addCell(row, prescription.instructions || "—");
+                body.append(row);
+            });
+            table.append(body);
+            detailsCell.append(table);
+        }
+        detailsRow.append(detailsCell);
+        historyRow.after(detailsRow);
+        button.textContent = "Ẩn chi tiết";
+        button.setAttribute("aria-expanded", "true");
+    }
+
     function showPatient(patient) {
         selectedPatientCode = patient.code;
         patientCard.hidden = false;
@@ -164,47 +302,35 @@ if (doctorStatus) {
         }
     }
 
-    async function loadPatientHistory() {
+    async function loadPatientHistory(page = 1) {
         if (!selectedPatientCode) {
             await findPatient();
             if (!selectedPatientCode) return;
         }
+        const requestPatientCode = selectedPatientCode;
+        const requestId = ++historyRequestId;
         try {
+            const url = new URL(
+                `/doctor/api/patients/${encodeURIComponent(requestPatientCode)}/history`,
+                window.location.origin
+            );
+            url.searchParams.set("page", String(page));
             const response = await fetch(
-                `/doctor/api/patients/${encodeURIComponent(selectedPatientCode)}/history`
+                url
             );
             const data = await readJson(response);
-            historyRows.replaceChildren();
+            if (requestId !== historyRequestId || requestPatientCode !== selectedPatientCode) {
+                return;
+            }
             if (!data.exams.length) {
                 showPatientHistoryMessage("Bệnh nhân chưa có phiếu khám trước đó.");
                 return;
             }
-            data.exams.forEach(exam => {
-                const row = document.createElement("tr");
-                addCell(row, exam.date);
-                addCell(row, exam.id);
-                addCell(row, exam.symptoms);
-                addCell(row, exam.doctor);
-                addCell(row, String(exam.prescription_count));
-                addCell(row, exam.status === "NHAP" ? "Bản nháp" : "Đã lập");
-                const action = document.createElement("td");
-                if (exam.can_resume) {
-                    const button = document.createElement("button");
-                    button.type = "button";
-                    button.className = "btn btn-outline-primary btn-sm";
-                    button.dataset.resumeDraft = exam.id;
-                    button.textContent = "Tiếp tục";
-                    action.append(button);
-                } else {
-                    action.textContent = "—";
-                }
-                row.append(action);
-                historyRows.append(row);
-            });
-            patientHistoryMessage.hidden = true;
-            historyTable.hidden = false;
+            renderPatientHistory(data);
         } catch (error) {
-            showPatientHistoryMessage(error.message);
+            if (requestId === historyRequestId) {
+                showPatientHistoryMessage(error.message);
+            }
         }
     }
 
@@ -523,6 +649,8 @@ if (doctorStatus) {
         const draftsButton = event.target.closest("[data-toggle-drafts]");
         const searchButton = event.target.closest("[data-patient-search]");
         const historyButton = event.target.closest("[data-patient-history]");
+        const historyPageButton = event.target.closest("[data-history-page]");
+        const historyPrescriptionsButton = event.target.closest("[data-history-prescriptions]");
         const medicineButton = event.target.closest("[data-medicine-search]");
         const medicinePageButton = event.target.closest("[data-medicine-page]");
         const addButton = event.target.closest("[data-add-medicine]");
@@ -549,6 +677,14 @@ if (doctorStatus) {
         }
         if (historyButton) {
             loadPatientHistory();
+            return;
+        }
+        if (historyPageButton && !historyPageButton.disabled) {
+            loadPatientHistory(Number(historyPageButton.dataset.historyPage));
+            return;
+        }
+        if (historyPrescriptionsButton) {
+            toggleHistoryPrescriptions(historyPrescriptionsButton);
             return;
         }
         if (medicineButton) {

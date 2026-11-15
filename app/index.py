@@ -437,20 +437,37 @@ def doctor_patient_history(code: str):
     patient = dao.find_patient_by_code(code)
     if patient is None:
         return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
-    history = dao.patient_exam_history(patient.maBN)
+    raw_page = request.args.get("page", "1")
+    if not re.fullmatch(r"[0-9]{1,6}", raw_page) or int(raw_page) < 1:
+        return jsonify(error="Số trang không hợp lệ."), 400
+    page = int(raw_page)
+    page_size = 5
+    history, total = dao.patient_exam_history(
+        patient.maBN,
+        page=page,
+        page_size=page_size,
+    )
     return jsonify(exams=[{
         "id": exam.maPhieuKham,
         "date": exam.ngayKham.strftime("%d/%m/%Y"),
         "symptoms": exam.trieuChung,
         "doctor": exam.bacSi.nhanVien.hoTen,
         "prescription_count": len(exam.chiTietDonThuocs),
+        "prescriptions": [{
+            "code": detail.maThuoc,
+            "name": detail.thuoc.tenThuoc,
+            "unit": detail.thuoc.donVi.tenDonVi,
+            "quantity": detail.soLuong,
+            "instructions": detail.cachDung,
+        } for detail in exam.chiTietDonThuocs],
         "status": exam.trangThai,
         "can_resume": (
             exam.trangThai == "NHAP"
             and current_user.nhanVien is not None
             and exam.maNV == current_user.nhanVien.maNV
         ),
-    } for exam in history])
+    } for exam in history], page=page, page_size=page_size, total=total,
+        pages=(total + page_size - 1) // page_size)
 
 
 @app.get("/doctor/api/exams/<exam_id>")

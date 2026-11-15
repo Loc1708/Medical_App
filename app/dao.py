@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-
+from sqlalchemy import or_, cast, String
 from app import app, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
@@ -43,6 +43,39 @@ def find_patient_by_code(code: str) -> BenhNhan | None:
         return None
     return db.session.get(BenhNhan, int(match.group(1)))
 
+#Cashier
+def find_unpaid_receipts(ma_bn=None):
+    res = (db.session.query(HoaDon)
+           .join(PhieuKham, HoaDon.maPhieuKham == PhieuKham.maPhieuKham)
+           .join(BenhNhan, PhieuKham.maBN == BenhNhan.maBN)
+           .filter(HoaDon.trangThai.contains('CHUA_THANH_TOAN')))
+
+    if ma_bn:
+        res = res.filter(BenhNhan.maBN == ma_bn)
+    return res.all()
+    
+
+def cashier_search_patients(kw=None):
+    if not kw or not kw.strip():
+        return []
+
+    kw = kw.strip()
+    clean_kw = kw.upper().replace("BN-", "")
+
+    dieu_kien = [BenhNhan.hoTen.contains(kw)]
+    if clean_kw.isdigit():
+        dieu_kien.append(cast(BenhNhan.maBN, String).contains(clean_kw))
+
+    return BenhNhan.query.filter(or_(*dieu_kien)).limit(10).all()
+
+def pay_receipt(ma_hd):
+    hd = HoaDon.query.get(ma_hd)
+    if hd is None or hd.trangThai != 'CHUA_THANH_TOAN':
+        return None
+
+    hd.trangThai = 'DA_THANH_TOAN'   # sua gia tri cot
+    db.session.commit()              # luu xuong database
+    return hd
 
 def search_medicines(keyword: str, *, limit: int = 30) -> list[Thuoc]:
     keyword = keyword.strip()

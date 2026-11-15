@@ -168,8 +168,7 @@ main { flex: 1; }
 .nurse-table > :not(caption) > * > * { padding: 12px 10px; }
 .nurse-table th { white-space: nowrap; }
 .nurse-table-empty { height: 72px; text-align: center; color: var(--muted); }
-.nurse-row-actions { white-space: nowrap; }
-.nurse-row-actions .btn + .btn { margin-left: 4px; }
+.nurse-row-actions { display: flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
 .nurse-list-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 16px; }
 .nurse-pagination { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .nurse-form-actions, .nurse-confirm-row { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }

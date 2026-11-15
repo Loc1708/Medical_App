@@ -116,6 +116,29 @@ if (nurseApp) {
         return button;
     }
 
+    function makeIconButton(label, icon, action, id, disabled = false) {
+        const iconPaths = {
+            edit: "M14 5l5 5M4 20l4-1L20 7a2 2 0 0 0-3-3L5 16zM12 4H4v16h16v-8",
+            delete: "M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7",
+        };
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "catalog-icon";
+        button.dataset[action] = id;
+        button.setAttribute("aria-label", label);
+        button.title = label;
+        button.disabled = disabled;
+
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 24 24");
+        svg.setAttribute("aria-hidden", "true");
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", iconPaths[icon]);
+        svg.append(path);
+        button.append(svg);
+        return button;
+    }
+
     function addPagination(container, pageCount, page, action) {
         container.replaceChildren();
         if (pageCount <= 1) return;
@@ -177,18 +200,20 @@ if (nurseApp) {
                 makeCell(row, patient.gender);
                 makeCell(row, patient.phone);
                 makeCell(row, String(patient.birthYear));
-                const actions = document.createElement("td");
+                const actionsCell = document.createElement("td");
+                const actions = document.createElement("div");
                 actions.className = "nurse-row-actions";
                 actions.append(
-                    makeButton(
-                        "Sửa", "btn btn-sm btn-outline-primary", "editPatient",
+                    makeIconButton(
+                        "Sửa thông tin", "edit", "editPatient",
                         patient.id, patient.status === "DA_XAC_NHAN"
                     ),
-                    makeButton(
-                        "Hủy", "btn btn-sm btn-outline-danger", "cancelPatient", patient.id
+                    makeIconButton(
+                        "Hủy lượt khám", "delete", "cancelPatient", patient.id
                     )
                 );
-                row.append(actions);
+                actionsCell.append(actions);
+                row.append(actionsCell);
                 patientRows.append(row);
             });
         }
@@ -230,20 +255,22 @@ if (nurseApp) {
                 makeCell(row, formatDate(patient.examDate));
                 makeCell(row, patient.phone);
                 makeCell(row, String(patient.birthYear));
-                const actions = document.createElement("td");
+                const actionsCell = document.createElement("td");
+                const actions = document.createElement("div");
                 actions.className = "nurse-row-actions";
                 actions.append(
-                    makeButton("Sửa", "btn btn-sm btn-outline-primary", "editPatient", patient.id),
+                    makeIconButton("Sửa thông tin", "edit", "editPatient", patient.id),
                     makeButton(
                         "Duyệt vào ngày đã chọn", "btn btn-sm btn-outline-success",
                         "approvePatient", patient.id,
                         targetIsPast || activePatients.length >= dailyLimit
                     ),
-                    makeButton(
-                        "Hủy", "btn btn-sm btn-outline-danger", "cancelPatient", patient.id
+                    makeIconButton(
+                        "Hủy lượt khám", "delete", "cancelPatient", patient.id
                     )
                 );
-                row.append(actions);
+                actionsCell.append(actions);
+                row.append(actionsCell);
                 waitingRows.append(row);
             });
         }

@@ -121,6 +121,12 @@ class AccountTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", html)
         self.assertIn(patient.benhNhan.hoTen, html)
+        exam_date = registration.ngayKham.strftime("%d/%m/%Y")
+        self.assertNotIn(exam_date, html)
+        registration.trangThai = "DA_XAC_NHAN"
+        db.session.commit()
+        confirmed_html = self.client.get("/dashboard").get_data(as_text=True)
+        self.assertIn(exam_date, confirmed_html)
         self.assertEqual(len(dao.patient_exam_registrations(patient.benhNhan.maBN)), 1)
 
     def test_patient_profile_page_shows_own_details_and_restricts_other_roles(self):
@@ -265,10 +271,14 @@ class AccountTests(unittest.TestCase):
                 self.assertIn("Danh sách bệnh nhân", page_html)
                 self.assertIn("Xác nhận danh sách", page_html)
                 self.assertIn('data-nurse-app', page_html)
-                self.assertIn('data-patient-form', page_html)
-                self.assertIn('id="nurse-birth-year"', page_html)
+                self.assertNotIn("Thêm bệnh nhân", page_html)
+                self.assertNotIn('data-patient-form', page_html)
                 self.assertIn("/static/js/nurse.js", page_html)
                 self.assertIn('data-waiting-rows', page_html)
+                self.assertLess(
+                    page_html.index('data-waiting-rows'),
+                    page_html.index('data-patient-rows'),
+                )
                 self.assertNotIn("data-preview-control", page_html)
 
     def test_doctor_dashboard_matches_consultation_mockup_without_fake_records(self):

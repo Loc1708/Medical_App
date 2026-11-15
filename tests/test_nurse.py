@@ -309,7 +309,9 @@ class NurseQueueTests(unittest.TestCase):
         self.assertIsNotNone(registration.danhSachKham)
         self.assertEqual(registration.danhSachKham.maNV, self.nurse.nhanVien.maNV)
         page = patient_client.get("/dashboard")
-        self.assertIn("Chờ y tá duyệt", page.get_data(as_text=True))
+        page_html = page.get_data(as_text=True)
+        self.assertIn("Chờ y tá duyệt", page_html)
+        self.assertNotIn(registration.ngayKham.strftime("%d/%m/%Y"), page_html)
 
     def test_nurse_endpoints_enforce_role_and_csrf(self):
         missing_csrf = self.client.post(

@@ -79,7 +79,6 @@ def dashboard():
         clinic_today = dao.clinic_today()
         return render_template(
             "nurse/dashboard.html",
-            current_year=clinic_today.year,
             exam_date=clinic_today.isoformat(),
         )
     if current_user.role == Role.PATIENT:

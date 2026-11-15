@@ -4,13 +4,6 @@ if (nurseApp) {
     const pageSize = 10;
     const dateInput = nurseApp.querySelector("#nurse-exam-date");
     const limitLabel = nurseApp.querySelector("[data-daily-limit]");
-    const patientForm = nurseApp.querySelector("[data-patient-form]");
-    const nameInput = nurseApp.querySelector("#nurse-patient-name");
-    const birthYearInput = nurseApp.querySelector("#nurse-birth-year");
-    const phoneInput = nurseApp.querySelector("#nurse-patient-phone");
-    const addressInput = nurseApp.querySelector("#nurse-patient-address");
-    const submitPatientButton = nurseApp.querySelector("[data-submit-patient]");
-    const cancelEditButton = nurseApp.querySelector("[data-cancel-edit]");
     const searchForm = nurseApp.querySelector("[data-search-form]");
     const searchInput = nurseApp.querySelector("#nurse-search");
     const patientRows = nurseApp.querySelector("[data-patient-rows]");
@@ -30,7 +23,6 @@ if (nurseApp) {
     let currentPage = 1;
     let currentWaitingPage = 1;
     let searchTerm = "";
-    let editingPatientId = null;
     let dailyLimit = 0;
     let activePatients = [];
     let waitingPatients = [];
@@ -116,24 +108,19 @@ if (nurseApp) {
         return button;
     }
 
-    function makeIconButton(label, icon, action, id, disabled = false) {
-        const iconPaths = {
-            edit: "M14 5l5 5M4 20l4-1L20 7a2 2 0 0 0-3-3L5 16zM12 4H4v16h16v-8",
-            delete: "M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7",
-        };
+    function makeIconButton(label, action, id) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "catalog-icon";
         button.dataset[action] = id;
         button.setAttribute("aria-label", label);
         button.title = label;
-        button.disabled = disabled;
 
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         svg.setAttribute("viewBox", "0 0 24 24");
         svg.setAttribute("aria-hidden", "true");
         const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", iconPaths[icon]);
+        path.setAttribute("d", "M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7");
         svg.append(path);
         button.append(svg);
         return button;
@@ -203,15 +190,7 @@ if (nurseApp) {
                 const actionsCell = document.createElement("td");
                 const actions = document.createElement("div");
                 actions.className = "nurse-row-actions";
-                actions.append(
-                    makeIconButton(
-                        "Sửa thông tin", "edit", "editPatient",
-                        patient.id, patient.status === "DA_XAC_NHAN"
-                    ),
-                    makeIconButton(
-                        "Hủy lượt khám", "delete", "cancelPatient", patient.id
-                    )
-                );
+                actions.append(makeIconButton("Hủy lượt khám", "cancelPatient", patient.id));
                 actionsCell.append(actions);
                 row.append(actionsCell);
                 patientRows.append(row);
@@ -259,15 +238,12 @@ if (nurseApp) {
                 const actions = document.createElement("div");
                 actions.className = "nurse-row-actions";
                 actions.append(
-                    makeIconButton("Sửa thông tin", "edit", "editPatient", patient.id),
                     makeButton(
                         "Duyệt vào ngày đã chọn", "btn btn-sm btn-outline-success",
                         "approvePatient", patient.id,
                         targetIsPast || activePatients.length >= dailyLimit
                     ),
-                    makeIconButton(
-                        "Hủy lượt khám", "delete", "cancelPatient", patient.id
-                    )
+                    makeIconButton("Hủy lượt khám", "cancelPatient", patient.id)
                 );
                 actionsCell.append(actions);
                 row.append(actionsCell);
@@ -287,84 +263,6 @@ if (nurseApp) {
         renderWaiting();
     }
 
-    function resetPatientForm() {
-        patientForm.reset();
-        editingPatientId = null;
-        submitPatientButton.textContent = "Thêm vào danh sách";
-        cancelEditButton.hidden = true;
-    }
-
-    function beginEdit(patientId) {
-        const patient = [...activePatients, ...waitingPatients]
-            .find(item => String(item.id) === String(patientId));
-        if (!patient) return;
-        if (patient.status === "DA_XAC_NHAN") {
-            showStatus("Lượt khám đã xác nhận, không thể chỉnh sửa.", "error");
-            return;
-        }
-
-        editingPatientId = patient.id;
-        nameInput.value = patient.name;
-        patientForm.querySelector(`input[name="gender"][value="${patient.gender}"]`).checked = true;
-        birthYearInput.value = String(patient.birthYear);
-        phoneInput.value = patient.phone;
-        addressInput.value = patient.address;
-        submitPatientButton.textContent = "Cập nhật bệnh nhân";
-        cancelEditButton.hidden = false;
-        nameInput.focus();
-        showStatus(`Đang chỉnh sửa thông tin của ${patient.name}.`);
-    }
-
-    async function savePatient(event) {
-        event.preventDefault();
-        if (!selectedDate) {
-            showStatus("Vui lòng chọn ngày khám trước.", "error");
-            dateInput.focus();
-            return;
-        }
-        if (!patientForm.reportValidity()) return;
-
-        const gender = patientForm.querySelector('input[name="gender"]:checked');
-        const patient = {
-            date: selectedDate,
-            name: nameInput.value.trim(),
-            gender: gender ? gender.value : "",
-            birthYear: Number(birthYearInput.value),
-            phone: phoneInput.value.trim(),
-            address: addressInput.value.trim(),
-        };
-        const currentYear = new Date().getFullYear();
-        if (!patient.name || !Number.isInteger(patient.birthYear)
-            || patient.birthYear < 1900 || patient.birthYear > currentYear
-            || !/^\+?[0-9]{9,15}$/.test(patient.phone)
-            || !patient.address || patient.address.length > 255) {
-            showStatus("Vui lòng kiểm tra lại thông tin bệnh nhân.", "error");
-            return;
-        }
-
-        submitPatientButton.disabled = true;
-        try {
-            const endpoint = editingPatientId
-                ? `/nurse/api/lists/${editingPatientId}`
-                : "/nurse/api/lists";
-            const result = await requestApi(endpoint, {
-                method: editingPatientId ? "PUT" : "POST",
-                body: JSON.stringify(patient),
-            });
-            resetPatientForm();
-            currentPage = 1;
-            currentWaitingPage = 1;
-            searchTerm = "";
-            searchInput.value = "";
-            await refreshDay();
-            showStatus(result.message, result.patient.status === "CHO_DUYET" ? "info" : "success");
-        } catch (error) {
-            showStatus(error.message, "error");
-        } finally {
-            submitPatientButton.disabled = false;
-        }
-    }
-
     async function cancelPatient(patientId) {
         const patient = [...activePatients, ...waitingPatients]
             .find(item => String(item.id) === String(patientId));
@@ -373,7 +271,6 @@ if (nurseApp) {
             const result = await requestApi(`/nurse/api/lists/${patient.id}`, {
                 method: "DELETE",
             });
-            if (String(editingPatientId) === String(patient.id)) resetPatientForm();
             await refreshDay();
             showStatus(result.message, "success");
         } catch (error) {
@@ -394,16 +291,9 @@ if (nurseApp) {
         }
     }
 
-    patientForm.addEventListener("submit", savePatient);
-    cancelEditButton.addEventListener("click", () => {
-        resetPatientForm();
-        showStatus("Đã hủy chỉnh sửa.");
-    });
-
     dateInput.value = dateInput.value || todayValue();
     selectedDate = dateInput.value;
     dateInput.addEventListener("change", async () => {
-        if (editingPatientId) resetPatientForm();
         selectedDate = dateInput.value;
         currentPage = 1;
         currentWaitingPage = 1;
@@ -440,16 +330,12 @@ if (nurseApp) {
     });
 
     patientRows.addEventListener("click", async event => {
-        const editButton = event.target.closest("[data-edit-patient]");
         const cancelButton = event.target.closest("[data-cancel-patient]");
-        if (editButton) beginEdit(editButton.dataset.editPatient);
         if (cancelButton) await cancelPatient(cancelButton.dataset.cancelPatient);
     });
     waitingRows.addEventListener("click", async event => {
-        const editButton = event.target.closest("[data-edit-patient]");
         const cancelButton = event.target.closest("[data-cancel-patient]");
         const approveButton = event.target.closest("[data-approve-patient]");
-        if (editButton) beginEdit(editButton.dataset.editPatient);
         if (cancelButton) await cancelPatient(cancelButton.dataset.cancelPatient);
         if (approveButton && !approveButton.disabled) {
             await approvePatient(approveButton.dataset.approvePatient);

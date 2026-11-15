@@ -279,7 +279,8 @@ Thư mục `.venv`, `instance`, các tệp `.env` và Python cache được Git 
 - Role/trạng thái được đọc lại từ CSDL mỗi request. Các thao tác ghi có CSRF token,
   kiểm tra đầu vào và transaction; không cho phép chỉ dựa vào menu để kiểm soát quyền.
 - Giao diện có header, sidebar, footer chung và thư mục riêng theo từng role.
-  Trang y tá có thể thao tác thêm/sửa/xóa/tìm kiếm, chọn ngày, phân trang và xác nhận
+  Trang y tá có thể hủy lượt khám, duyệt bệnh nhân chờ, tìm kiếm, chọn ngày,
+  phân trang và xác nhận
   danh sách đã lưu; danh sách chính và hàng chờ được lưu vào database, chưa gửi SMS.
   Hàng chờ hiển thị trên mọi ngày đang chọn; y tá có thể chuyển lượt chờ sang ngày
   từ hôm nay trở đi nếu ngày đó còn chỗ.

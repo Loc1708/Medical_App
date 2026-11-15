@@ -51,7 +51,13 @@
                 {% for registration in registrations %}
                 <tr>
                     <td>DK-{{ "%05d"|format(registration.maCTDSKham) }}</td>
-                    <td>{{ registration.ngayKham.strftime("%d/%m/%Y") }}</td>
+                    <td>
+                        {% if registration.trangThai == 'DA_XAC_NHAN' %}
+                        {{ registration.ngayKham.strftime("%d/%m/%Y") }}
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
                     <td>{{ registration.hoTen }}</td>
                     <td>
                         {% if registration.trangThai == 'CHO_DUYET' %}

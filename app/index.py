@@ -480,12 +480,6 @@ def doctor_search_medicines():
     if not re.fullmatch(r"[0-9]{1,6}", raw_page) or int(raw_page) < 1:
         return jsonify(error="Số trang không hợp lệ."), 400
     page = int(raw_page)
-    if len(keyword) < 2:
-        if keyword:
-            return jsonify(
-                medicines=[], page=page, page_size=10, total=0, pages=0,
-            )
-        keyword = ""
     medicines, total = dao.search_medicines(keyword, page=page)
     return jsonify(medicines=[{
         "code": medicine.maThuoc,

@@ -352,6 +352,10 @@ class AccountTests(unittest.TestCase):
         self.assertEqual([row["code"] for row in medicines.json["medicines"]], ["MED-1"])
         partial_name = self.client.get("/doctor/api/medicines?q=kiểm")
         self.assertEqual([row["code"] for row in partial_name.json["medicines"]], ["MED-1"])
+        single_character = self.client.get("/doctor/api/medicines?q=t")
+        self.assertEqual(
+            [row["code"] for row in single_character.json["medicines"]], ["MED-1"]
+        )
         partial_code = self.client.get("/doctor/api/medicines?q=ed-1")
         self.assertEqual([row["code"] for row in partial_code.json["medicines"]], ["MED-1"])
         self.assertEqual(partial_code.json["medicines"][0]["price"], 1000)

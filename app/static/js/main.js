@@ -56,6 +56,7 @@ if (doctorStatus) {
     let draftDirty = false;
     let draftRevision = 0;
     let medicineRequestId = 0;
+    let medicineSearchTimer = null;
     const activeDraftStorageKey = "medical-app-doctor-active-draft";
 
     function showDoctorStatus(message, isError = false) {
@@ -350,19 +351,11 @@ if (doctorStatus) {
     }
 
     async function searchMedicines(page = 1) {
+        window.clearTimeout(medicineSearchTimer);
+        medicineSearchTimer = null;
         const keyword = medicineQuery.value.trim();
         const requestId = ++medicineRequestId;
         medicineResults.replaceChildren();
-        if (keyword && keyword.length < 2) {
-            const row = document.createElement("tr");
-            const cell = addCell(row, "Nhập ít nhất 2 ký tự để tìm thuốc.");
-            cell.colSpan = 6;
-            cell.className = "doctor-table-empty";
-            medicineResults.append(row);
-            medicineSummary.textContent = "Nhập ít nhất 2 ký tự để tìm thuốc.";
-            medicinePagination.replaceChildren();
-            return;
-        }
         medicineSummary.textContent = "Đang tải danh sách thuốc...";
         try {
             const url = new URL("/doctor/api/medicines", window.location.origin);
@@ -416,6 +409,15 @@ if (doctorStatus) {
                 showDoctorStatus(error.message, true);
             }
         }
+    }
+
+    function scheduleMedicineSearch() {
+        window.clearTimeout(medicineSearchTimer);
+        medicineRequestId += 1;
+        medicineSearchTimer = window.setTimeout(() => {
+            medicineSearchTimer = null;
+            searchMedicines(1);
+        }, 250);
     }
 
     function renderPrescription() {
@@ -721,6 +723,7 @@ if (doctorStatus) {
     loadDoctorDrafts();
     restoreActiveDraft();
     searchMedicines();
+    medicineQuery.addEventListener("input", scheduleMedicineSearch);
 
     document.addEventListener("keydown", event => {
         if (event.key !== "Enter") return;

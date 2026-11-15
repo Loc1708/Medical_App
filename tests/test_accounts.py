@@ -95,22 +95,24 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn('action="/patient/exam-registrations"', html)
         self.assertIn("Danh sách đăng ký khám của tôi", html)
+        for field in ('name="hoTen"', 'name="gioiTinh"', 'name="namSinh"', 'name="diaChi"'):
+            self.assertNotIn(field, html)
 
         response = self.post("/patient/exam-registrations", {
-            "hoTen": "Tên khi đăng ký",
-            "gioiTinh": "Nữ",
-            "namSinh": "1998",
-            "diaChi": "Địa chỉ khi đăng ký",
+            "hoTen": "Thông tin giả mạo",
+            "gioiTinh": "Khác",
+            "namSinh": "2200",
+            "diaChi": "Địa chỉ giả mạo",
         })
         self.assertEqual(response.status_code, 302)
 
         registration = db.session.scalar(db.select(ChiTietDanhSachKham))
         self.assertIsNotNone(registration)
         self.assertEqual(registration.maBN, patient.benhNhan.maBN)
-        self.assertEqual(registration.hoTen, "Tên khi đăng ký")
-        self.assertEqual(registration.gioiTinh, "Nữ")
-        self.assertEqual(registration.namSinh, 1998)
-        self.assertEqual(registration.diaChi, "Địa chỉ khi đăng ký")
+        self.assertEqual(registration.hoTen, patient.benhNhan.hoTen)
+        self.assertEqual(registration.gioiTinh, patient.benhNhan.gioiTinh)
+        self.assertEqual(registration.namSinh, patient.benhNhan.namSinh)
+        self.assertEqual(registration.diaChi, patient.benhNhan.diaChi)
         self.assertEqual(registration.trangThai, "CHO_KHAM")
         self.assertEqual(registration.ngayKham, date.today())
         self.assertIsNone(registration.danhSachKham.maNV)
@@ -118,27 +120,96 @@ class AccountTests(unittest.TestCase):
         page = self.client.get("/dashboard")
         html = page.get_data(as_text=True)
         self.assertIn("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", html)
-        self.assertIn("Tên khi đăng ký", html)
+        self.assertIn(patient.benhNhan.hoTen, html)
         self.assertEqual(len(dao.patient_exam_registrations(patient.benhNhan.maBN)), 1)
 
-    def test_patient_exam_registration_validates_data_and_requires_patient(self):
-        dao.create_account(self.data("registration_patient"))
-        self.sign_in("registration_patient")
+    def test_patient_profile_page_shows_own_details_and_restricts_other_roles(self):
+        patient = dao.create_account(self.data("profile_patient"))
+        patient.benhNhan.hoTen = "Hồ sơ bệnh nhân riêng"
+        db.session.commit()
+        self.sign_in("profile_patient")
 
-        invalid = self.post("/patient/exam-registrations", {
-            "hoTen": "Tên hợp lệ",
-            "gioiTinh": "Nam",
-            "namSinh": "2200",
-            "diaChi": "Địa chỉ hợp lệ",
+        response = self.client.get("/patient/profile")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        for value in (
+            patient.benhNhan.maHienThi,
+            patient.benhNhan.hoTen,
+            str(patient.benhNhan.namSinh),
+            patient.benhNhan.gioiTinh,
+            patient.benhNhan.soDienThoai,
+            patient.benhNhan.diaChi,
+        ):
+            self.assertIn(value, html)
+        self.assertIn('href="/patient/profile"', html)
+        self.assertIn('class="nav-item active" href="/patient/profile"', html)
+
+        doctor = dao.create_account(self.data("profile_doctor", Role.DOCTOR))
+        doctor_client = app.test_client()
+        self.sign_in("profile_doctor", client=doctor_client)
+        denied = doctor_client.get("/patient/profile")
+        self.assertEqual(denied.status_code, 403)
+        self.assertNotIn(patient.benhNhan.hoTen, denied.get_data(as_text=True))
+
+    def test_patient_can_edit_contact_details_but_not_gender_or_birth_year(self):
+        patient = dao.create_account(self.data("editable_profile_patient"))
+        original = {
+            "gender": patient.benhNhan.gioiTinh,
+            "birth_year": patient.benhNhan.namSinh,
+        }
+        registration = dao.register_patient_exam(patient.benhNhan)
+        self.sign_in("editable_profile_patient")
+
+        page = self.client.get("/patient/profile").get_data(as_text=True)
+        self.assertIn('name="hoTen"', page)
+        self.assertIn('name="soDienThoai"', page)
+        self.assertIn('name="diaChi"', page)
+        self.assertIn('id="patient-profile-birth-year" type="number"', page)
+        self.assertIn('id="patient-profile-gender" disabled', page)
+
+        response = self.post("/patient/profile", {
+            "hoTen": "Tên đã cập nhật",
+            "soDienThoai": "+84901234567",
+            "diaChi": "Địa chỉ mới",
+            "gioiTinh": "Khác",
+            "namSinh": "1980",
+        })
+        self.assertEqual(response.status_code, 302)
+        db.session.refresh(patient.benhNhan)
+        self.assertEqual(patient.benhNhan.hoTen, "Tên đã cập nhật")
+        self.assertEqual(patient.benhNhan.soDienThoai, "+84901234567")
+        self.assertEqual(patient.benhNhan.diaChi, "Địa chỉ mới")
+        self.assertEqual(patient.benhNhan.gioiTinh, original["gender"])
+        self.assertEqual(patient.benhNhan.namSinh, original["birth_year"])
+        self.assertEqual(registration.hoTen, "Người dùng kiểm thử")
+        self.assertEqual(registration.diaChi, "Địa chỉ kiểm thử")
+
+        invalid = self.post("/patient/profile", {
+            "hoTen": "Tên khác",
+            "soDienThoai": "không phải số",
+            "diaChi": "Địa chỉ khác",
         })
         self.assertEqual(invalid.status_code, 400)
-        self.assertIn("Năm sinh phải từ 1900 đến năm hiện tại.", invalid.get_data(as_text=True))
-        self.assertEqual(
-            db.session.scalar(
-                db.select(db.func.count()).select_from(ChiTietDanhSachKham)
-            ),
-            0,
-        )
+        db.session.refresh(patient.benhNhan)
+        self.assertEqual(patient.benhNhan.hoTen, "Tên đã cập nhật")
+
+    def test_patient_exam_registration_uses_profile_and_requires_patient(self):
+        patient = dao.create_account(self.data("registration_patient"))
+        self.sign_in("registration_patient")
+
+        response = self.post("/patient/exam-registrations", {
+            "hoTen": "Thông tin không lấy từ hồ sơ",
+            "gioiTinh": "Không hợp lệ",
+            "namSinh": "2200",
+            "diaChi": "Địa chỉ không lấy từ hồ sơ",
+        })
+        self.assertEqual(response.status_code, 302)
+        registration = db.session.scalar(db.select(ChiTietDanhSachKham))
+        self.assertIsNotNone(registration)
+        self.assertEqual(registration.hoTen, patient.benhNhan.hoTen)
+        self.assertEqual(registration.gioiTinh, patient.benhNhan.gioiTinh)
+        self.assertEqual(registration.namSinh, patient.benhNhan.namSinh)
+        self.assertEqual(registration.diaChi, patient.benhNhan.diaChi)
 
         dao.create_account(self.data("registration_doctor", Role.DOCTOR))
         doctor_client = app.test_client()
@@ -158,6 +229,7 @@ class AccountTests(unittest.TestCase):
         ).status_code, 400)
         self.sign_in()
         self.assertEqual(self.client.post("/admin/accounts/new", data=self.form()).status_code, 400)
+        self.assertEqual(self.client.post("/patient/profile", data={}).status_code, 400)
         self.assertEqual(self.client.get("/logout").status_code, 405)
 
     def test_non_admin_cannot_read_or_write_accounts(self):

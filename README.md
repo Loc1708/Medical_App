@@ -198,7 +198,12 @@ thuộc quy trình nghiệp vụ của thu ngân.
 Lệnh này tạo `DanhSachKham` và `ChiTietDanhSachKham` khi chưa có. Với database
 cũ còn bảng `DanhSachKham` dạng từng lượt đăng ký, hãy chạy migration phía trên
 thay vì tạo bảng thủ công. Bệnh nhân đăng ký qua bảng chi tiết liên kết hồ sơ
-`BenhNhan`, còn bảng danh sách lưu ngày khám và y tá phụ trách.
+`BenhNhan`, còn bảng danh sách lưu ngày khám và y tá phụ trách. Khi bệnh nhân
+bấm đăng ký, ứng dụng lấy họ tên, giới tính, năm sinh và địa chỉ trực tiếp từ
+hồ sơ đã lưu rồi sao chép vào lượt khám; bệnh nhân không cần nhập lại và dữ liệu
+gửi từ trình duyệt không thay thế được thông tin trong hồ sơ. Tại `/patient/profile`,
+bệnh nhân có thể sửa họ tên, số điện thoại và địa chỉ; giới tính và năm sinh
+không sửa được. Thay đổi hồ sơ không viết lại thông tin snapshot của lượt khám cũ.
 
 Mở http://127.0.0.1:5000. Dừng bằng Ctrl+C.
 Lệnh trên bật debug, chỉ dùng cho môi trường development.

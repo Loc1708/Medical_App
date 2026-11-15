@@ -1,0 +1,71 @@
+{% extends "layout/base.html" %}
+{% block title %}Thông tin bệnh nhân · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">HỒ SƠ CỦA TÔI</span>
+        <h1 class="h3 mt-2 mb-1">Thông tin bệnh nhân</h1>
+        <p class="text-muted mb-0">Cập nhật họ tên, số điện thoại và địa chỉ của bạn.</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('dashboard') }}">Quay lại tổng quan</a>
+</div>
+
+<section class="panel form-panel mt-4" aria-labelledby="patient-profile-heading">
+    {% set values = form_values|default({}) %}
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <h2 class="h5 mb-1" id="patient-profile-heading">Thông tin cá nhân</h2>
+            <p class="text-muted mb-0">Mã bệnh nhân</p>
+        </div>
+        <span class="role-badge">{{ patient.maHienThi }}</span>
+    </div>
+
+    <form method="post" action="{{ url_for('patient_profile') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label" for="patient-profile-name">Họ và tên</label>
+                <input class="form-control" id="patient-profile-name" name="hoTen"
+                       type="text" maxlength="100" autocomplete="name"
+                       value="{{ values.get('hoTen', patient.hoTen) }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="patient-profile-code">Mã bệnh nhân</label>
+                <input class="form-control" id="patient-profile-code" type="text"
+                       value="{{ patient.maHienThi }}" readonly>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="patient-profile-birth-year">Năm sinh</label>
+                <input class="form-control" id="patient-profile-birth-year" type="number"
+                       value="{{ patient.namSinh }}" disabled>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="patient-profile-gender">Giới tính</label>
+                <select class="form-select" id="patient-profile-gender" disabled>
+                    <option selected>{{ patient.gioiTinh }}</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="patient-profile-phone">Số điện thoại</label>
+                <input class="form-control" id="patient-profile-phone" name="soDienThoai"
+                       type="tel" maxlength="16" autocomplete="tel"
+                       pattern="\+?[0-9]{9,15}" value="{{ values.get('soDienThoai', patient.soDienThoai) }}"
+                       aria-describedby="patient-profile-phone-help" required>
+                <small class="text-muted" id="patient-profile-phone-help">
+                    9–15 chữ số, có thể bắt đầu bằng +.
+                </small>
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="patient-profile-address">Địa chỉ</label>
+                <input class="form-control" id="patient-profile-address" name="diaChi"
+                       type="text" maxlength="255" autocomplete="street-address"
+                       value="{{ values.get('diaChi', patient.diaChi) }}" required>
+            </div>
+        </div>
+        <p class="text-muted small mt-3 mb-0">Giới tính và năm sinh không thể chỉnh sửa tại đây.</p>
+        <div class="mt-4">
+            <button class="btn btn-primary" type="submit">Lưu thay đổi</button>
+        </div>
+    </form>
+</section>
+{% endblock %}

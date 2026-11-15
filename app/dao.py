@@ -188,6 +188,33 @@ def nurse_confirmed_exam_history() -> list[dict]:
     return list(history.values())
 
 
+def update_patient_profile(
+    patient_id: int,
+    *,
+    name: str,
+    phone: str,
+    address: str,
+) -> None:
+    patient = db.session.scalar(
+        db.select(BenhNhan).where(BenhNhan.maBN == patient_id).with_for_update()
+    )
+    if patient is None:
+        raise LookupError("Không tìm thấy hồ sơ bệnh nhân.")
+    patient.hoTen = name
+    patient.soDienThoai = phone
+    patient.diaChi = address
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        app.logger.warning("Patient profile update rejected by database constraints.")
+        raise ValueError("Không thể cập nhật hồ sơ bệnh nhân. Vui lòng tải lại trang.") from None
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Patient profile update failed.")
+        raise
+
+
 def _commit_exam_list_change() -> None:
     try:
         db.session.commit()
@@ -217,11 +244,6 @@ def _get_or_create_exam_day(exam_date: date, nurse_id: int | None = None) -> Dan
 
 def register_patient_exam(
     patient: BenhNhan,
-    *,
-    name: str,
-    gender: str,
-    birth_year: int,
-    address: str,
     exam_date: date | None = None,
 ) -> ChiTietDanhSachKham:
     exam_date = exam_date or datetime.now(timezone(timedelta(hours=7))).date()
@@ -240,10 +262,10 @@ def register_patient_exam(
         danhSachKham=_get_or_create_exam_day(exam_date),
         benhNhan=patient,
         ngayKham=exam_date,
-        hoTen=name,
-        gioiTinh=gender,
-        namSinh=birth_year,
-        diaChi=address,
+        hoTen=patient.hoTen,
+        gioiTinh=patient.gioiTinh,
+        namSinh=patient.namSinh,
+        diaChi=patient.diaChi,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
         trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",

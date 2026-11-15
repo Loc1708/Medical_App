@@ -288,10 +288,10 @@ class NurseQueueTests(unittest.TestCase):
         with patient_client.session_transaction() as browser_session:
             csrf_token = browser_session["csrf_token"]
         response = patient_client.post("/patient/exam-registrations", data={
-            "hoTen": patient.benhNhan.hoTen,
-            "gioiTinh": patient.benhNhan.gioiTinh,
-            "namSinh": patient.benhNhan.namSinh,
-            "diaChi": patient.benhNhan.diaChi,
+            "hoTen": "Không được dùng thay cho hồ sơ",
+            "gioiTinh": "Khác",
+            "namSinh": 1900,
+            "diaChi": "Địa chỉ khác",
             "csrf_token": csrf_token,
         })
         self.assertEqual(response.status_code, 302)
@@ -302,6 +302,10 @@ class NurseQueueTests(unittest.TestCase):
         )
         self.assertIsNotNone(registration)
         self.assertEqual(registration.trangThai, "CHO_DUYET")
+        self.assertEqual(registration.hoTen, patient.benhNhan.hoTen)
+        self.assertEqual(registration.gioiTinh, patient.benhNhan.gioiTinh)
+        self.assertEqual(registration.namSinh, patient.benhNhan.namSinh)
+        self.assertEqual(registration.diaChi, patient.benhNhan.diaChi)
         self.assertIsNotNone(registration.danhSachKham)
         self.assertEqual(registration.danhSachKham.maNV, self.nurse.nhanVien.maNV)
         page = patient_client.get("/dashboard")

@@ -102,14 +102,62 @@ def nurse_exam_history():
     )
 
 
-def _render_patient_dashboard(registration_values=None, status: int = 200):
+def _render_patient_profile(patient, form_values=None, status: int = 200):
+    return render_template(
+        "patient/profile.html",
+        patient=patient,
+        form_values=form_values or {},
+    ), status
+
+
+@app.route("/patient/profile", methods=["GET", "POST"])
+@roles_required(Role.PATIENT)
+def patient_profile():
+    patient = current_user.benhNhan
+    if patient is None:
+        abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
+    if request.method == "POST":
+        name = request.form.get("hoTen", "").strip()
+        phone = request.form.get("soDienThoai", "").strip()
+        address = request.form.get("diaChi", "").strip()
+        error = None
+        if not name or len(name) > 100:
+            error = "Họ tên bắt buộc và tối đa 100 ký tự."
+        elif not re.fullmatch(r"\+?[0-9]{9,15}", phone):
+            error = "Số điện thoại phải có 9–15 chữ số, có thể bắt đầu bằng +."
+        elif not address or len(address) > 255:
+            error = "Địa chỉ bắt buộc và tối đa 255 ký tự."
+
+        if error:
+            flash(error, "danger")
+            return _render_patient_profile(patient, request.form, status=400)
+        try:
+            dao.update_patient_profile(
+                patient.maBN,
+                name=name,
+                phone=phone,
+                address=address,
+            )
+        except LookupError:
+            abort(404, description="Không tìm thấy hồ sơ bệnh nhân.")
+        except ValueError as error:
+            db.session.rollback()
+            flash(str(error), "danger")
+            return _render_patient_profile(patient, request.form, status=409)
+
+        flash("Thông tin bệnh nhân đã được cập nhật.", "success")
+        return redirect(url_for("patient_profile"))
+    return _render_patient_profile(patient)
+
+
+def _render_patient_dashboard(status: int = 200):
     patient = current_user.benhNhan
     if patient is None:
         abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
     return render_template(
         "patient/dashboard.html",
+        patient=patient,
         registrations=dao.patient_exam_registrations(patient.maBN),
-        registration_values=registration_values or {},
     ), status
 
 
@@ -121,45 +169,20 @@ def patient_register_exam():
     if patient is None:
         abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
 
-    name = request.form.get("hoTen", "").strip()
-    gender = request.form.get("gioiTinh", "")
-    address = request.form.get("diaChi", "").strip()
     try:
-        birth_year = int(request.form.get("namSinh", ""))
-    except ValueError:
-        birth_year = 0
-
-    if not name or len(name) > 100:
-        flash("Họ tên bắt buộc và tối đa 100 ký tự.", "danger")
-    elif gender not in {"Nam", "Nữ", "Khác"}:
-        flash("Vui lòng chọn giới tính hợp lệ.", "danger")
-    elif not 1900 <= birth_year <= date.today().year:
-        flash("Năm sinh phải từ 1900 đến năm hiện tại.", "danger")
-    elif not address or len(address) > 255:
-        flash("Địa chỉ bắt buộc và tối đa 255 ký tự.", "danger")
+        registration = dao.register_patient_exam(patient)
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+        return _render_patient_dashboard(status=409)
+    if registration.trangThai == "CHO_DUYET":
+        flash(
+            "Đã nhận đăng ký. Danh sách đủ chỗ; hồ sơ đang chờ y tá duyệt.",
+            "success",
+        )
     else:
-        try:
-            registration = dao.register_patient_exam(
-                patient,
-                name=name,
-                gender=gender,
-                birth_year=birth_year,
-                address=address,
-            )
-        except ValueError as error:
-            db.session.rollback()
-            flash(str(error), "danger")
-            return _render_patient_dashboard(request.form, status=400)
-        if registration.trangThai == "CHO_DUYET":
-            flash(
-                "Đã nhận đăng ký. Danh sách đủ chỗ; hồ sơ đang chờ y tá duyệt.",
-                "success",
-            )
-        else:
-            flash("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", "success")
-        return redirect(url_for("dashboard"))
-
-    return _render_patient_dashboard(request.form, status=400)
+        flash("Đăng ký khám thành công. Hồ sơ đã được thêm vào danh sách khám.", "success")
+    return redirect(url_for("dashboard"))
 
 
 def _nurse_exam_date(value: object) -> date:

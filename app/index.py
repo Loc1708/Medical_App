@@ -263,18 +263,39 @@ def nurse_exam_lists():
     )
 
 
+@app.get("/nurse/api/patients")
+@roles_required(Role.NURSE)
+def nurse_find_patient():
+    query = request.args.get("q", "").strip()
+    patients = dao.search_patients_by_code(query) if query else []
+    return jsonify(patients=[{
+        "code": patient.maHienThi,
+        "name": patient.hoTen,
+        "gender": patient.gioiTinh,
+        "birth_year": patient.namSinh,
+        "phone": patient.soDienThoai,
+    } for patient in patients])
+
+
 @app.post("/nurse/api/lists")
 @roles_required(Role.NURSE)
 def nurse_create_exam():
     try:
         payload = request.get_json(silent=True)
-        data = _nurse_exam_payload(payload)
-        exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
+        if not isinstance(payload, dict):
+            return jsonify(error="Dữ liệu yêu cầu không hợp lệ."), 400
+        patient_code = payload.get("patient_code")
+        if not isinstance(patient_code, str) or not patient_code.strip():
+            return jsonify(error="Vui lòng nhập mã bệnh nhân."), 400
+        patient = dao.find_patient_by_code(patient_code)
+        if patient is None:
+            return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
+        exam_date = _nurse_exam_date(payload.get("date"))
         nurse = current_user.nhanVien
         registration = dao.create_nurse_exam(
             exam_date=exam_date,
+            patient=patient,
             nurse_id=nurse.maNV if nurse else None,
-            **data,
         )
     except ValueError as error:
         db.session.rollback()

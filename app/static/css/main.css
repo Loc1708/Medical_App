@@ -145,6 +145,16 @@ main { flex: 1; }
 .nurse-date-panel { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .nurse-date-control { display: flex; align-items: center; gap: 18px; }
 .nurse-date-control .form-control { width: 220px; }
+.nurse-patient-lookup { position: relative; max-width: 760px; }
+.nurse-patient-lookup-row { display: flex; align-items: center; gap: 10px; }
+.nurse-patient-lookup-row .form-control { min-width: 0; }
+.nurse-patient-suggestions:not([hidden]) { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; right: 0; max-height: 320px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: white; box-shadow: 0 8px 20px rgb(20 50 45 / 12%); }
+.nurse-patient-suggestion { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 10px 12px; border: 0; border-bottom: 1px solid var(--line); background: white; color: var(--ink); text-align: left; }
+.nurse-patient-suggestion:hover, .nurse-patient-suggestion:focus { background: var(--mint); }
+.nurse-patient-suggestion small, .nurse-patient-no-results { color: var(--muted); }
+.nurse-patient-no-results { margin: 0; padding: 10px 12px; }
+.nurse-patient-lookup-result:not([hidden]) { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: #f8fbfa; }
+.nurse-patient-lookup-result p { margin: 4px 0 0; color: var(--muted); }
 .nurse-info-note { max-width: none; margin-bottom: 0; }
 .nurse-status { padding: 12px 16px; border: 1px solid #bbdcd4; border-radius: 10px; background: #edf8f5; color: var(--primary); font-size: .9rem; }
 .nurse-status.is-error { border-color: #e7b6b2; background: #fff4f3; color: #8c2821; }
@@ -195,6 +205,9 @@ main { flex: 1; }
     .nurse-workspace-grid { grid-template-columns: 1fr; }
     .nurse-date-panel, .nurse-date-control, .nurse-list-footer { align-items: stretch; flex-direction: column; }
     .nurse-date-control .form-control { width: 100%; }
+    .nurse-patient-lookup-row { align-items: stretch; flex-direction: column; }
+    .nurse-patient-lookup-row .form-control { width: 100%; }
+    .nurse-patient-lookup-result:not([hidden]) { align-items: stretch; flex-direction: column; }
     .nurse-search-row { flex-wrap: wrap; }
     .nurse-search-row .form-control { flex-basis: 100%; }
     .nurse-pagination { justify-content: flex-start; }

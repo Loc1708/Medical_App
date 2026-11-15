@@ -13,7 +13,7 @@ from app.migration import (
     upgrade_nurse_many_to_many_schema,
     upgrade_nurse_queue_schema,
 )
-from app.models import ChiTietDanhSachKham, DanhSachKham, QuyDinh, Role
+from app.models import BenhNhan, ChiTietDanhSachKham, DanhSachKham, QuyDinh, Role
 
 
 class AuthClient(FlaskClient):
@@ -84,13 +84,18 @@ class NurseQueueTests(unittest.TestCase):
         )
 
     def _patient(self, index, exam_date="2026-11-14"):
+        patient = BenhNhan(
+            hoTen=f"Bệnh nhân {index}",
+            gioiTinh="Nữ",
+            namSinh=1990,
+            soDienThoai=f"0901234{index:04d}",
+            diaChi="Địa chỉ kiểm thử",
+        )
+        db.session.add(patient)
+        db.session.flush()
         return {
             "date": exam_date,
-            "name": f"Bệnh nhân {index}",
-            "gender": "Nữ",
-            "birthYear": 1990,
-            "phone": f"0901234{index:04d}",
-            "address": "Địa chỉ kiểm thử",
+            "patient_code": patient.maHienThi,
         }
 
     def test_forty_first_patient_is_persisted_in_waiting_list(self):
@@ -222,21 +227,72 @@ class NurseQueueTests(unittest.TestCase):
 
     def test_nurse_can_add_patient_to_a_future_exam_date(self):
         future_date = dao.clinic_today() + timedelta(days=1)
+        patient_payload = self._patient(1, future_date.isoformat())
+        lookup = self.client.get(
+            "/nurse/api/patients?q=BN-000"
+        )
+        self.assertEqual(lookup.status_code, 200)
+        self.assertEqual(
+            [patient["code"] for patient in lookup.get_json()["patients"]],
+            [patient_payload["patient_code"]],
+        )
+        self.assertEqual(lookup.get_json()["patients"][0]["name"], "Bệnh nhân 1")
+        substring_lookup = self.client.get("/nurse/api/patients?q=001")
+        self.assertEqual(
+            [patient["code"] for patient in substring_lookup.get_json()["patients"]],
+            [patient_payload["patient_code"]],
+        )
+        self.assertEqual(
+            self.client.get("/nurse/api/patients?q=BN-999999").get_json()["patients"],
+            [],
+        )
 
         response = self._api(
             "POST",
             "/nurse/api/lists",
-            self._patient(1, future_date.isoformat()),
+            {
+                **patient_payload,
+                "name": "Tên không được tin cậy",
+            },
         )
 
         self.assertEqual(response.status_code, 201)
         patient = response.get_json()["patient"]
+        self.assertEqual(patient["name"], "Bệnh nhân 1")
         self.assertEqual(patient["status"], "CHO_KHAM")
         self.assertEqual(patient["examDate"], future_date.isoformat())
         day = self._api(
             "GET", f"/nurse/api/lists?date={future_date.isoformat()}"
         )
         self.assertEqual(len(day.get_json()["active"]), 1)
+
+    def test_nurse_cannot_add_patient_from_unrecognized_code_or_raw_fields(self):
+        baseline = db.session.scalar(
+            db.select(db.func.count()).select_from(BenhNhan)
+        )
+        missing_code = self._api(
+            "POST",
+            "/nurse/api/lists",
+            {
+                "date": "2026-11-14",
+                "name": "Không tồn tại trong hồ sơ",
+                "gender": "Nam",
+                "birthYear": 1990,
+                "phone": "09011112222",
+                "address": "Địa chỉ tự nhập",
+            },
+        )
+        unknown_code = self._api(
+            "POST",
+            "/nurse/api/lists",
+            {"patient_code": "BN-999999", "date": "2026-11-14"},
+        )
+        self.assertEqual(missing_code.status_code, 400)
+        self.assertEqual(unknown_code.status_code, 404)
+        self.assertEqual(
+            db.session.scalar(db.select(db.func.count()).select_from(BenhNhan)),
+            baseline,
+        )
 
     def test_waiting_patient_cannot_be_approved_into_a_past_date(self):
         self.limit.giaTri = Decimal("1")

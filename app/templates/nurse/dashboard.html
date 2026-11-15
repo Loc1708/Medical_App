@@ -28,6 +28,25 @@
         <span class="role-badge" data-daily-limit>Đang tải giới hạn...</span>
     </section>
 
+    <section class="panel nurse-panel mt-4" aria-labelledby="nurse-add-heading">
+        <div class="nurse-panel-heading mb-3">
+            <span class="doctor-step" aria-hidden="true">01</span>
+            <div>
+                <h2 class="h5 mb-1" id="nurse-add-heading">Thêm bệnh nhân</h2>
+                <p class="text-muted mb-0">Tra cứu bằng mã bệnh nhân đã có trong hệ thống.</p>
+            </div>
+        </div>
+        <div class="nurse-patient-lookup">
+            <form class="nurse-patient-lookup-row" data-patient-lookup-form>
+                <label class="visually-hidden" for="nurse-patient-code">Mã bệnh nhân</label>
+                <input class="form-control" id="nurse-patient-code" type="search"
+                       placeholder="Nhập mã bệnh nhân (VD: BN-00001)" autocomplete="off" required>
+            </form>
+            <div class="nurse-patient-suggestions" data-patient-suggestions hidden></div>
+        </div>
+        <div class="nurse-patient-lookup-result mt-3" data-patient-lookup-result hidden></div>
+    </section>
+
     <div class="nurse-workspace-grid mt-4">
         <section class="panel nurse-panel nurse-waiting-panel" aria-labelledby="nurse-waiting-heading">
             <div class="nurse-panel-heading nurse-list-heading">

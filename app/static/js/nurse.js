@@ -4,6 +4,10 @@ if (nurseApp) {
     const pageSize = 10;
     const dateInput = nurseApp.querySelector("#nurse-exam-date");
     const limitLabel = nurseApp.querySelector("[data-daily-limit]");
+    const patientLookupForm = nurseApp.querySelector("[data-patient-lookup-form]");
+    const patientCodeInput = nurseApp.querySelector("#nurse-patient-code");
+    const patientSuggestions = nurseApp.querySelector("[data-patient-suggestions]");
+    const patientLookupResult = nurseApp.querySelector("[data-patient-lookup-result]");
     const searchForm = nurseApp.querySelector("[data-search-form]");
     const searchInput = nurseApp.querySelector("#nurse-search");
     const patientRows = nurseApp.querySelector("[data-patient-rows]");
@@ -24,6 +28,10 @@ if (nurseApp) {
     let currentWaitingPage = 1;
     let searchTerm = "";
     let dailyLimit = 0;
+    let patientSearchTimer = null;
+    let patientLookupRequestId = 0;
+    let matchedPatients = [];
+    let matchedPatient = null;
     let activePatients = [];
     let waitingPatients = [];
     let dayConfirmed = false;
@@ -124,6 +132,76 @@ if (nurseApp) {
         svg.append(path);
         button.append(svg);
         return button;
+    }
+
+    function clearPatientLookup() {
+        matchedPatient = null;
+        patientLookupResult.replaceChildren();
+        patientLookupResult.hidden = true;
+    }
+
+    function clearPatientSuggestions() {
+        matchedPatients = [];
+        patientSuggestions.replaceChildren();
+        patientSuggestions.hidden = true;
+    }
+
+    function renderPatientSuggestions(patients) {
+        matchedPatients = patients;
+        patientSuggestions.replaceChildren();
+        if (!patients.length) {
+            const emptyMessage = document.createElement("p");
+            emptyMessage.className = "nurse-patient-no-results";
+            emptyMessage.textContent = "Không tìm thấy mã bệnh nhân phù hợp.";
+            patientSuggestions.append(emptyMessage);
+        } else {
+            patients.forEach(patient => {
+                const button = makeButton(
+                    patient.code, "nurse-patient-suggestion", "selectPatient",
+                    patient.code
+                );
+                const details = document.createElement("small");
+                details.textContent = `${patient.name} · ${patient.phone}`;
+                button.append(details);
+                patientSuggestions.append(button);
+            });
+        }
+        patientSuggestions.hidden = false;
+    }
+
+    async function searchPatientsByCode(query, requestId) {
+        try {
+            const url = new URL("/nurse/api/patients", window.location.origin);
+            url.searchParams.set("q", query);
+            const data = await requestApi(url);
+            if (requestId === patientLookupRequestId) {
+                renderPatientSuggestions(data.patients);
+            }
+        } catch (error) {
+            if (requestId === patientLookupRequestId) {
+                showStatus(error.message, "error");
+            }
+        }
+    }
+
+    function showPatientLookup(patient) {
+        matchedPatient = patient;
+        const details = document.createElement("div");
+        const name = document.createElement("strong");
+        name.textContent = `${patient.code} · ${patient.name}`;
+        const demographics = document.createElement("p");
+        demographics.textContent = [
+            patient.gender,
+            `Năm sinh ${patient.birth_year}`,
+            patient.phone,
+        ].join(" · ");
+        details.append(name, demographics);
+
+        const addButton = makeButton(
+            "Thêm vào danh sách", "btn btn-primary", "addFoundPatient", patient.code
+        );
+        patientLookupResult.replaceChildren(details, addButton);
+        patientLookupResult.hidden = false;
     }
 
     function addPagination(container, pageCount, page, action) {
@@ -290,6 +368,78 @@ if (nurseApp) {
             showStatus(error.message, "error");
         }
     }
+
+    patientCodeInput.addEventListener("input", () => {
+        window.clearTimeout(patientSearchTimer);
+        const requestId = ++patientLookupRequestId;
+        const query = patientCodeInput.value.trim();
+        clearPatientLookup();
+        clearPatientSuggestions();
+        if (query) {
+            patientSearchTimer = window.setTimeout(
+                () => searchPatientsByCode(query, requestId), 250
+            );
+        }
+    });
+    patientLookupForm.addEventListener("submit", async event => {
+        event.preventDefault();
+        window.clearTimeout(patientSearchTimer);
+        patientSearchTimer = null;
+        const query = patientCodeInput.value.trim();
+        const requestId = ++patientLookupRequestId;
+        clearPatientLookup();
+        clearPatientSuggestions();
+        if (query) await searchPatientsByCode(query, requestId);
+    });
+    patientSuggestions.addEventListener("click", event => {
+        const button = event.target.closest("[data-select-patient]");
+        if (!button) return;
+        const patient = matchedPatients.find(item => item.code === button.dataset.selectPatient);
+        if (!patient) return;
+        window.clearTimeout(patientSearchTimer);
+        patientSearchTimer = null;
+        patientLookupRequestId += 1;
+        patientCodeInput.value = patient.code;
+        clearPatientSuggestions();
+        showPatientLookup(patient);
+    });
+    patientLookupResult.addEventListener("click", async event => {
+        const button = event.target.closest("[data-add-found-patient]");
+        if (!button || button.disabled || !matchedPatient) return;
+        button.disabled = true;
+        const patientName = matchedPatient.name;
+        const statusKind = activePatients.length >= dailyLimit ? "info" : "success";
+        try {
+            const result = await requestApi("/nurse/api/lists", {
+                method: "POST",
+                body: JSON.stringify({
+                    patient_code: matchedPatient.code,
+                    date: selectedDate,
+                }),
+            });
+            patientLookupForm.reset();
+            patientLookupRequestId += 1;
+            window.clearTimeout(patientSearchTimer);
+            patientSearchTimer = null;
+            clearPatientSuggestions();
+            clearPatientLookup();
+            currentPage = 1;
+            currentWaitingPage = 1;
+            searchTerm = "";
+            searchInput.value = "";
+            await refreshDay();
+            showStatus(
+                result.patient.status === "CHO_DUYET"
+                    ? `${patientName} đã được thêm vào danh sách chờ duyệt.`
+                    : result.message,
+                result.patient.status === "CHO_DUYET" ? "info" : statusKind
+            );
+        } catch (error) {
+            showStatus(error.message, "error");
+        } finally {
+            button.disabled = false;
+        }
+    });
 
     dateInput.value = dateInput.value || todayValue();
     selectedDate = dateInput.value;

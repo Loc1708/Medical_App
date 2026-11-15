@@ -43,6 +43,40 @@ def find_patient_by_code(code: str) -> BenhNhan | None:
         return None
     return db.session.get(BenhNhan, int(match.group(1)))
 
+
+def search_patients_by_code(keyword: str, *, limit: int = 10) -> list[BenhNhan]:
+    query = keyword.strip().upper()
+    if query in {"B", "BN", "BN-"}:
+        digits = ""
+    elif query.startswith("BN-"):
+        digits = query[3:]
+    else:
+        digits = query
+    if digits and (not digits.isdigit() or len(digits) > 10):
+        return []
+
+    statement = db.select(BenhNhan).order_by(BenhNhan.maBN)
+    if digits:
+        conditions = []
+        # Match substrings in the zero-padded display code without DB-specific string functions.
+        for width in range(4, 11):
+            if len(digits) > width:
+                continue
+            minimum = 1 if width == 4 else 10 ** (width - 1)
+            maximum = 10 ** width - 1
+            for start in range(width - len(digits) + 1):
+                prefix = digits[:start]
+                base = int(prefix + digits) if prefix + digits else 0
+                scale = 10 ** (width - start - len(digits))
+                lower = max(base * scale, minimum)
+                upper = min(base * scale + scale - 1, maximum)
+                if lower <= upper:
+                    conditions.append(BenhNhan.maBN.between(lower, upper))
+        if not conditions:
+            return []
+        statement = statement.where(or_(*conditions))
+    return list(db.session.scalars(statement.limit(limit)))
+
 #Cashier
 def find_unpaid_receipts(ma_bn=None):
     res = (db.session.query(HoaDon)
@@ -294,55 +328,29 @@ def register_patient_exam(
 def create_nurse_exam(
     *,
     exam_date: date,
-    name: str,
-    gender: str,
-    birth_year: int,
-    phone: str,
-    address: str,
+    patient: BenhNhan,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
     slot = _next_daily_slot(exam_date)
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham)
-        .join(BenhNhan)
         .where(
+            ChiTietDanhSachKham.maBN == patient.maBN,
             ChiTietDanhSachKham.ngayKham == exam_date,
-            BenhNhan.soDienThoai == phone,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         )
     )
     if duplicate is not None:
-        raise ValueError("Số điện thoại này đã có trong danh sách ngày đang chọn.")
-
-    patient = db.session.scalar(
-        db.select(BenhNhan)
-        .where(
-            BenhNhan.hoTen == name,
-            BenhNhan.gioiTinh == gender,
-            BenhNhan.namSinh == birth_year,
-            BenhNhan.soDienThoai == phone,
-        )
-        .order_by(BenhNhan.maBN.desc())
-    )
-    if patient is None:
-        patient = BenhNhan(
-            hoTen=name,
-            gioiTinh=gender,
-            namSinh=birth_year,
-            diaChi=address,
-            soDienThoai=phone,
-        )
-        db.session.add(patient)
-        db.session.flush()
+        raise ValueError("Bệnh nhân này đã có trong danh sách ngày đang chọn.")
 
     registration = ChiTietDanhSachKham(
         danhSachKham=_get_or_create_exam_day(exam_date, nurse_id),
         benhNhan=patient,
         ngayKham=exam_date,
-        hoTen=name,
-        gioiTinh=gender,
-        namSinh=birth_year,
-        diaChi=address,
+        hoTen=patient.hoTen,
+        gioiTinh=patient.gioiTinh,
+        namSinh=patient.namSinh,
+        diaChi=patient.diaChi,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
         trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",

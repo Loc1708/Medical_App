@@ -198,8 +198,9 @@ Lệnh này có thể chạy lặp lại; tạo tổng cộng 11 hồ sơ bệnh
 (bao gồm Nguyễn Khánh Như Quỳnh), tám mặt hàng được ghi rõ là DEMO và một phiếu
 lịch sử có nội dung kiểm thử. Tài khoản bệnh nhân DEMO bị khóa đăng nhập;
 thông tin liên hệ/địa chỉ là giả. Không dùng dữ liệu này cho khám chữa bệnh.
-Lưu nháp có thể bổ sung sau; lập phiếu hoàn chỉnh không giảm tồn kho vì tồn kho
-thuộc quy trình nghiệp vụ của thu ngân.
+Lưu hoặc cập nhật bản nháp không làm thay đổi tồn kho. Khi bác sĩ lập phiếu chính
+thức, số lượng thuốc trong đơn được trừ khỏi tồn kho trong cùng transaction với
+phiếu và hóa đơn; nếu tồn kho không đủ thì không lưu phiếu.
 
 Để tạo riêng bảng danh sách đăng ký khám trên database đang cấu hình, chạy:
 

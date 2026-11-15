@@ -416,6 +416,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(invoice.trangThai, "CHUA_THANH_TOAN")
         self.assertEqual(saved.json["invoice_id"], invoice.maHoaDon)
         self.assertEqual(saved.json["invoice_total"], 102000)
+        self.assertEqual(medicine.soLuongTon, 8)
         self.assertEqual(
             len(self.client.get(f"/doctor/api/patients/{patient_code}/history").json["exams"]),
             2,
@@ -498,6 +499,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(draft.trangThai, "NHAP")
         self.assertEqual(draft.trieuChung, "")
         self.assertEqual([detail.maThuoc for detail in draft.chiTietDonThuocs], ["DRAFT-M1"])
+        self.assertEqual(medicines[0].soLuongTon, 10)
         self.assertIsNone(db.session.scalar(
             db.select(HoaDon).where(HoaDon.maPhieuKham == draft_id)
         ))
@@ -540,6 +542,7 @@ class AccountTests(unittest.TestCase):
         draft = db.session.get(PhieuKham, draft_id)
         self.assertEqual(draft.trieuChung, "Đã cập nhật bản nháp")
         self.assertEqual([detail.maThuoc for detail in draft.chiTietDonThuocs], ["DRAFT-M2"])
+        self.assertEqual(medicines[1].soLuongTon, 8)
         self.assertIsNone(db.session.scalar(
             db.select(HoaDon).where(HoaDon.maPhieuKham == draft_id)
         ))
@@ -571,7 +574,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(invoice.tongTien, 106000)
         self.assertEqual(finalized.json["invoice_id"], invoice.maHoaDon)
         self.assertEqual(medicines[0].soLuongTon, 10)
-        self.assertEqual(medicines[1].soLuongTon, 8)
+        self.assertEqual(medicines[1].soLuongTon, 5)
 
         deleted = self.client.delete(
             f"/doctor/api/drafts/{draft_id}",

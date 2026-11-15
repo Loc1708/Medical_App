@@ -582,6 +582,64 @@ def create_exam(
     exam: PhieuKham | None = None,
 ) -> tuple[PhieuKham, HoaDon | None]:
     invoice = None
+    if exam is not None:
+        exam = db.session.scalar(
+            db.select(PhieuKham).where(
+                PhieuKham.maPhieuKham == exam.maPhieuKham,
+                PhieuKham.maNV == doctor.maNV,
+                PhieuKham.trangThai == "NHAP",
+            ).with_for_update().execution_options(populate_existing=True)
+        )
+        if exam is None:
+            raise ValueError("Bản nháp không còn khả dụng để cập nhật.")
+
+    if status == "DA_LAP":
+        medicine_codes = sorted({
+            prescription["medicine"].maThuoc
+            for prescription in prescriptions
+        })
+        locked_medicines = list(db.session.scalars(
+            db.select(Thuoc)
+            .where(Thuoc.maThuoc.in_(medicine_codes))
+            .order_by(Thuoc.maThuoc)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        ))
+        medicines_by_code = {
+            medicine.maThuoc: medicine for medicine in locked_medicines
+        }
+        missing_codes = set(medicine_codes) - medicines_by_code.keys()
+        if missing_codes:
+            raise ValueError(f"Không tìm thấy thuốc {min(missing_codes)}.")
+
+        locked_prescriptions = []
+        quantities_by_code = {}
+        for prescription in prescriptions:
+            code = prescription["medicine"].maThuoc
+            quantity = prescription["quantity"]
+            if (
+                not isinstance(quantity, int) or isinstance(quantity, bool)
+                or quantity < 1
+            ):
+                raise ValueError("Số lượng thuốc không hợp lệ.")
+            if code in quantities_by_code:
+                raise ValueError("Mỗi loại thuốc chỉ được xuất hiện một lần trong đơn.")
+            quantities_by_code[code] = quantity
+            locked_prescriptions.append({
+                **prescription,
+                "medicine": medicines_by_code[code],
+            })
+
+        for code, quantity in quantities_by_code.items():
+            medicine = medicines_by_code[code]
+            if quantity > medicine.soLuongTon:
+                raise ValueError(
+                    f"Số lượng thuốc {medicine.tenThuoc} vượt quá tồn kho."
+                )
+        for code, quantity in quantities_by_code.items():
+            medicines_by_code[code].soLuongTon -= quantity
+        prescriptions = locked_prescriptions
+
     if exam is None:
         exam = PhieuKham(maPhieuKham=str(uuid4()))
         db.session.add(exam)

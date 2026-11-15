@@ -514,6 +514,35 @@ def delete_doctor_draft(exam_id: str, doctor_id: int) -> bool:
     return True
 
 
+def _create_exam_invoice(
+    exam: PhieuKham,
+    doctor: BacSi,
+    prescriptions: list[dict],
+) -> HoaDon:
+    fee_rule = db.session.get(QuyDinh, "TIEN_KHAM")
+    if fee_rule is None:
+        raise ValueError("Chưa có quy định tiền khám. Hãy cập nhật quy định trước.")
+
+    medicine_fee = Decimal("0.00")
+    for prescription in prescriptions:
+        medicine_fee += (
+            Decimal(str(prescription["medicine"].donGia))
+            * prescription["quantity"]
+        )
+    medicine_fee = medicine_fee.quantize(Decimal("0.01"))
+    exam_fee = fee_rule.giaTri
+    invoice = HoaDon(
+        ngayLap=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
+        tienKham=float(exam_fee),
+        tienThuoc=float(medicine_fee),
+        tongTien=float(exam_fee + medicine_fee),
+        maPhieuKham=exam.maPhieuKham,
+        maNV=doctor.maNV,
+    )
+    db.session.add(invoice)
+    return invoice
+
+
 def create_exam(
     patient: BenhNhan,
     doctor: BacSi,
@@ -522,7 +551,8 @@ def create_exam(
     exam_date: date,
     status: str = "DA_LAP",
     exam: PhieuKham | None = None,
-) -> PhieuKham:
+) -> tuple[PhieuKham, HoaDon | None]:
+    invoice = None
     if exam is None:
         exam = PhieuKham(maPhieuKham=str(uuid4()))
         db.session.add(exam)
@@ -542,6 +572,8 @@ def create_exam(
             soLuong=prescription["quantity"],
             cachDung=prescription["instructions"],
         ))
+    if status == "DA_LAP":
+        invoice = _create_exam_invoice(exam, doctor, prescriptions)
     try:
         db.session.commit()
     except IntegrityError:
@@ -552,7 +584,7 @@ def create_exam(
         db.session.rollback()
         app.logger.exception("Exam creation failed.")
         raise
-    return exam
+    return exam, invoice
 
 
 def _update_profile(account: TaiKhoan, data: dict) -> None:

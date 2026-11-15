@@ -559,19 +559,25 @@ def doctor_create_exam():
     clinic_timezone = timezone(timedelta(hours=7))
     exam_date = datetime.now(clinic_timezone).date()
     try:
-        exam = dao.create_exam(
+        exam, invoice = dao.create_exam(
             patient, doctor, symptoms.strip(), prescription_data, exam_date,
             status=status, exam=draft,
         )
-    except ValueError:
-        return jsonify(error="Phiếu khám bị xung đột dữ liệu; vui lòng kiểm tra và thử lại."), 409
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409
     except SQLAlchemyError:
         db.session.rollback()
         return jsonify(error="Chưa lưu được phiếu khám. Vui lòng thử lại."), 503
     return jsonify(
         exam_id=exam.maPhieuKham,
         status=exam.trangThai,
-        message="Đã lưu bản nháp." if status == "NHAP" else "Đã lập phiếu khám.",
+        message=(
+            "Đã lưu bản nháp." if status == "NHAP"
+            else "Đã lập phiếu khám và hóa đơn."
+        ),
+        invoice_id=invoice.maHoaDon if invoice else None,
+        invoice_total=invoice.tongTien if invoice else None,
     ), 201
 
 @app.route('/cashier/api/patients', methods=['get'])

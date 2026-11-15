@@ -12,7 +12,7 @@ from app.index import app
 from app import dao, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
-    DonViThuoc, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
+    DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
 )
 
 
@@ -35,11 +35,18 @@ class AccountTests(unittest.TestCase):
         self.client = app.test_client()
         self.password = "Test-password-123!"
         self.admin = dao.create_account(self.data("admin", Role.ADMIN))
-        db.session.add(QuyDinh(
-            maQD="SO_BENH_NHAN_TOI_DA",
-            tenQuyDinh="Số bệnh nhân tối đa trong ngày",
-            giaTri=Decimal("40"),
-        ))
+        db.session.add_all([
+            QuyDinh(
+                maQD="SO_BENH_NHAN_TOI_DA",
+                tenQuyDinh="Số bệnh nhân tối đa trong ngày",
+                giaTri=Decimal("40"),
+            ),
+            QuyDinh(
+                maQD="TIEN_KHAM",
+                tenQuyDinh="Tiền khám",
+                giaTri=Decimal("100000"),
+            ),
+        ])
         db.session.commit()
 
     def tearDown(self):
@@ -383,6 +390,16 @@ class AccountTests(unittest.TestCase):
             },
         )
         self.assertEqual(saved.status_code, 201, saved.get_data(as_text=True))
+        invoice = db.session.scalar(
+            db.select(HoaDon).where(HoaDon.maPhieuKham == saved.json["exam_id"])
+        )
+        self.assertIsNotNone(invoice)
+        self.assertEqual(invoice.tienKham, 100000)
+        self.assertEqual(invoice.tienThuoc, 2000)
+        self.assertEqual(invoice.tongTien, 102000)
+        self.assertEqual(invoice.trangThai, "CHUA_THANH_TOAN")
+        self.assertEqual(saved.json["invoice_id"], invoice.maHoaDon)
+        self.assertEqual(saved.json["invoice_total"], 102000)
         self.assertEqual(
             len(self.client.get(f"/doctor/api/patients/{patient_code}/history").json["exams"]),
             2,
@@ -465,6 +482,9 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(draft.trangThai, "NHAP")
         self.assertEqual(draft.trieuChung, "")
         self.assertEqual([detail.maThuoc for detail in draft.chiTietDonThuocs], ["DRAFT-M1"])
+        self.assertIsNone(db.session.scalar(
+            db.select(HoaDon).where(HoaDon.maPhieuKham == draft_id)
+        ))
 
         resumed = self.client.get(f"/doctor/api/exams/{draft_id}")
         self.assertEqual(resumed.status_code, 200)
@@ -504,6 +524,9 @@ class AccountTests(unittest.TestCase):
         draft = db.session.get(PhieuKham, draft_id)
         self.assertEqual(draft.trieuChung, "Đã cập nhật bản nháp")
         self.assertEqual([detail.maThuoc for detail in draft.chiTietDonThuocs], ["DRAFT-M2"])
+        self.assertIsNone(db.session.scalar(
+            db.select(HoaDon).where(HoaDon.maPhieuKham == draft_id)
+        ))
 
         finalized = save(self.client, csrf_for(self.client), {
             "patient_code": patient_code,
@@ -523,6 +546,14 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(saved_exam.trieuChung, "Phiếu đã hoàn chỉnh")
         self.assertEqual(len(saved_exam.chiTietDonThuocs), 1)
         self.assertEqual(saved_exam.chiTietDonThuocs[0].maThuoc, "DRAFT-M2")
+        invoice = db.session.scalar(
+            db.select(HoaDon).where(HoaDon.maPhieuKham == draft_id)
+        )
+        self.assertIsNotNone(invoice)
+        self.assertEqual(invoice.tienKham, 100000)
+        self.assertEqual(invoice.tienThuoc, 6000)
+        self.assertEqual(invoice.tongTien, 106000)
+        self.assertEqual(finalized.json["invoice_id"], invoice.maHoaDon)
         self.assertEqual(medicines[0].soLuongTon, 10)
         self.assertEqual(medicines[1].soLuongTon, 8)
 

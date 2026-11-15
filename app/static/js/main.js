@@ -704,6 +704,7 @@ if (doctorStatus) {
                 showDoctorStatus(
                     silent ? `Đã tự lưu bản nháp ${result.exam_id}.`
                         : `${result.message} Mã phiếu: ${result.exam_id}`
+                            + (result.invoice_id ? ` · Mã hóa đơn: ${result.invoice_id}` : "")
                 );
                 if (requestPatientCode === selectedPatientCode) {
                     await loadPatientHistory();

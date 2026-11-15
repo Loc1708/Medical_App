@@ -329,6 +329,64 @@ class NurseQueueTests(unittest.TestCase):
         response = doctor_client.get("/nurse/api/lists?date=2026-11-14")
         self.assertEqual(response.status_code, 403)
 
+    def test_confirmed_list_history_has_its_own_nurse_page(self):
+        today = dao.clinic_today()
+        future_date = today + timedelta(days=1)
+        first = self._api(
+            "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
+        )
+        second = self._api(
+            "POST", "/nurse/api/lists", self._patient(2, today.isoformat())
+        )
+        unconfirmed = self._api(
+            "POST", "/nurse/api/lists", self._patient(3, future_date.isoformat())
+        )
+        self.assertEqual(
+            self._api(
+                "POST", "/nurse/api/lists/confirm", {"date": today.isoformat()}
+            ).status_code,
+            200,
+        )
+
+        page = self.client.get("/nurse/history")
+        html = page.get_data(as_text=True)
+        self.assertEqual(page.status_code, 200)
+        self.assertIn("Danh sách ngày", html)
+        details_start = html.index('<details class="panel nurse-history-day mt-4">')
+        summary_start = html.index("<summary", details_start)
+        summary_end = html.index("</summary>", summary_start)
+        details_end = html.index("</details>", summary_end)
+        self.assertNotIn("open", html[details_start:summary_start])
+        self.assertNotIn("Bệnh nhân 1", html[summary_start:summary_end])
+        self.assertIn("Bệnh nhân 1", html[summary_end:details_end])
+        self.assertIn("Bệnh nhân 1", html)
+        self.assertIn("Bệnh nhân 2", html)
+        self.assertNotIn("Bệnh nhân 3", html)
+        self.assertIn('href="/nurse/history"', html)
+        self.assertIn('class="nav-item active" href="/nurse/history"', html)
+
+        dashboard = self.client.get("/dashboard").get_data(as_text=True)
+        self.assertNotIn("data-toggle-history", dashboard)
+        self.assertIn('href="/nurse/history"', dashboard)
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(unconfirmed.status_code, 201)
+
+        patient = dao.create_account({
+            "tenDangNhap": "history_forbidden_patient",
+            "password": self.password,
+            "role": Role.PATIENT,
+            "hoTen": "Bệnh nhân kiểm thử",
+            "soDienThoai": "09000000222",
+            "trangThai": True,
+            "namSinh": 1995,
+            "gioiTinh": "Nam",
+            "diaChi": "Địa chỉ kiểm thử",
+        })
+        patient_client = app.test_client()
+        self._sign_in(patient_client, "history_forbidden_patient")
+        self.assertEqual(patient_client.get("/nurse/history").status_code, 403)
+
 
 class NurseQueueMigrationTests(unittest.TestCase):
     def test_upgrade_preserves_existing_rows_and_is_idempotent(self):

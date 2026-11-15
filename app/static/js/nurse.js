@@ -23,8 +23,6 @@ if (nurseApp) {
     const waitingCount = nurseApp.querySelector("[data-waiting-count]");
     const approvalTarget = nurseApp.querySelector("[data-approval-target]");
     const status = nurseApp.querySelector("[data-nurse-status]");
-    const historyPanel = nurseApp.querySelector("#nurse-history");
-    const historyRows = nurseApp.querySelector("[data-history-rows]");
     const confirmedStatus = nurseApp.querySelector("[data-confirmed-status]");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     let selectedDate = "";
@@ -36,7 +34,6 @@ if (nurseApp) {
     let dailyLimit = 0;
     let activePatients = [];
     let waitingPatients = [];
-    let history = [];
     let dayConfirmed = false;
 
     function todayValue() {
@@ -96,7 +93,6 @@ if (nurseApp) {
         clinicToday = data.today;
         activePatients = data.active;
         waitingPatients = data.waiting;
-        history = data.history;
         dayConfirmed = data.confirmed;
         nurseApp.dataset.maxPatients = String(dailyLimit);
         limitLabel.textContent = `Giới hạn: ${dailyLimit} bệnh nhân/ngày`;
@@ -259,39 +255,9 @@ if (nurseApp) {
         addPagination(waitingPagination, pageCount, currentWaitingPage, "waitingPage");
     }
 
-    function renderHistory() {
-        historyRows.replaceChildren();
-        if (!history.length) {
-            const row = document.createElement("tr");
-            const cell = makeCell(row, "Chưa có danh sách khám đã lưu.");
-            cell.colSpan = 5;
-            cell.className = "nurse-table-empty";
-            historyRows.append(row);
-            return;
-        }
-
-        history.forEach(day => {
-            const row = document.createElement("tr");
-            makeCell(row, formatDate(day.date));
-            makeCell(row, String(day.active));
-            makeCell(row, String(day.waiting));
-            makeCell(
-                row,
-                day.active && day.confirmed === day.active ? "Đã xác nhận" : "Đang tiếp nhận"
-            );
-            const action = document.createElement("td");
-            action.append(makeButton(
-                "Mở danh sách", "btn btn-sm btn-outline-primary", "openDate", day.date
-            ));
-            row.append(action);
-            historyRows.append(row);
-        });
-    }
-
     function renderAll() {
         renderPatients();
         renderWaiting();
-        renderHistory();
     }
 
     function resetPatientForm() {
@@ -446,15 +412,6 @@ if (nurseApp) {
         searchInput.focus();
     });
 
-    nurseApp.querySelector("[data-toggle-history]").addEventListener("click", event => {
-        const button = event.currentTarget;
-        historyPanel.hidden = !historyPanel.hidden;
-        button.setAttribute("aria-expanded", String(!historyPanel.hidden));
-        if (!historyPanel.hidden) {
-            historyPanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        }
-    });
-
     patientRows.addEventListener("click", async event => {
         const editButton = event.target.closest("[data-edit-patient]");
         const cancelButton = event.target.closest("[data-cancel-patient]");
@@ -483,29 +440,6 @@ if (nurseApp) {
         if (!button || button.disabled) return;
         currentWaitingPage = Number(button.dataset.waitingPage);
         renderWaiting();
-    });
-
-    historyRows.addEventListener("click", async event => {
-        const button = event.target.closest("[data-open-date]");
-        if (!button) return;
-        selectedDate = button.dataset.openDate;
-        dateInput.value = selectedDate;
-        currentPage = 1;
-        currentWaitingPage = 1;
-        searchTerm = "";
-        searchInput.value = "";
-        historyPanel.hidden = true;
-        nurseApp.querySelector("[data-toggle-history]").setAttribute("aria-expanded", "false");
-        activePatients = [];
-        waitingPatients = [];
-        dayConfirmed = false;
-        renderAll();
-        try {
-            await refreshDay();
-            showStatus(`Đang xem danh sách ngày ${formatDate(selectedDate)}.`);
-        } catch (error) {
-            showStatus(error.message, "error");
-        }
     });
 
     nurseApp.querySelector("[data-confirm-list]").addEventListener("click", async () => {

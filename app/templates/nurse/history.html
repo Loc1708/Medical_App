@@ -1,0 +1,59 @@
+{% extends "layout/base.html" %}
+{% block title %}Lịch sử danh sách · Phòng mạch Nhịp Sống{% endblock %}
+{% block content %}
+<div class="nurse-page">
+    <div class="page-heading nurse-heading">
+        <div>
+            <span class="eyebrow">KHÔNG GIAN Y TÁ</span>
+            <h1 class="h3 mt-2 mb-1">Lịch sử danh sách</h1>
+            <p class="text-muted mb-0">Các danh sách khám đã được xác nhận, sắp xếp từ mới nhất.</p>
+        </div>
+        <a class="btn btn-outline-primary" href="{{ url_for('dashboard') }}">Quay lại tổng quan</a>
+    </div>
+
+    {% for day in history %}
+    <details class="panel nurse-history-day mt-4">
+        <summary class="nurse-history-summary">
+            <div>
+                <h2 class="h5 mb-1" id="confirmed-list-{{ loop.index }}">
+                    Danh sách ngày {{ day.date.strftime("%d/%m/%Y") }}
+                </h2>
+                <p class="text-muted mb-0">{{ day.registrations|length }} bệnh nhân · Đã xác nhận</p>
+            </div>
+            <span class="role-badge">Đã xác nhận</span>
+        </summary>
+        <div class="nurse-history-content">
+            <div class="table-responsive">
+                <table class="table align-middle nurse-table mb-0">
+                    <caption class="visually-hidden">Danh sách bệnh nhân đã xác nhận ngày {{ day.date.strftime("%d/%m/%Y") }}</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">STT</th>
+                            <th scope="col">Họ tên</th>
+                            <th scope="col">Số điện thoại</th>
+                            <th scope="col">Giới tính</th>
+                            <th scope="col">Năm sinh</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for registration in day.registrations %}
+                        <tr>
+                            <td>{{ registration.slot if registration.slot is not none else "—" }}</td>
+                            <td>{{ registration.name }}</td>
+                            <td>{{ registration.phone }}</td>
+                            <td>{{ registration.gender }}</td>
+                            <td>{{ registration.birth_year }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </details>
+    {% else %}
+    <section class="panel nurse-panel mt-4">
+        <p class="text-muted text-center mb-0">Chưa có danh sách nào được xác nhận.</p>
+    </section>
+    {% endfor %}
+</div>
+{% endblock %}

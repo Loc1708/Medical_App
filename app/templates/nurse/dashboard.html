@@ -8,10 +8,6 @@
             <h1 class="h3 mt-2 mb-1">Danh sách khám</h1>
             <p class="text-muted mb-0">Xin chào, {{ current_user.hoTen }}. Tiếp nhận và quản lý danh sách khám theo ngày.</p>
         </div>
-        <button class="btn btn-outline-primary" type="button" data-toggle-history
-                aria-expanded="false" aria-controls="nurse-history">
-            Lịch sử danh sách
-        </button>
     </div>
 
     <div class="alert alert-info nurse-info-note mt-4" role="note">
@@ -30,30 +26,6 @@
                    aria-label="Chọn ngày khám" required>
         </div>
         <span class="role-badge" data-daily-limit>Đang tải giới hạn...</span>
-    </section>
-
-    <section class="panel nurse-history-panel mt-4" id="nurse-history"
-             aria-labelledby="nurse-history-heading" hidden>
-        <div class="nurse-panel-heading">
-            <div>
-                <h2 class="h5 mb-1" id="nurse-history-heading">Lịch sử danh sách</h2>
-                <p class="text-muted mb-0">Chọn ngày để xem lại danh sách đã lưu trong cơ sở dữ liệu.</p>
-            </div>
-        </div>
-        <div class="table-responsive">
-            <table class="table align-middle nurse-table mb-0">
-                <thead>
-                    <tr>
-                        <th scope="col">Ngày khám</th>
-                        <th scope="col">Trong danh sách</th>
-                        <th scope="col">Chờ duyệt</th>
-                        <th scope="col">Trạng thái</th>
-                        <th scope="col">Thao tác</th>
-                    </tr>
-                </thead>
-                <tbody data-history-rows></tbody>
-            </table>
-        </div>
     </section>
 
     <div class="nurse-workspace-grid mt-4">

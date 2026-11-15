@@ -128,28 +128,30 @@ def nurse_exam_list(
     return active, waiting
 
 
-def nurse_exam_history() -> list[dict]:
+def nurse_confirmed_exam_history() -> list[dict]:
     rows = db.session.execute(
-        db.select(
-            ChiTietDanhSachKham.ngayKham,
-            ChiTietDanhSachKham.trangThai,
-            db.func.count(ChiTietDanhSachKham.maCTDSKham),
+        db.select(ChiTietDanhSachKham, BenhNhan.soDienThoai.label("phone"))
+        .join(BenhNhan, BenhNhan.maBN == ChiTietDanhSachKham.maBN)
+        .where(ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN")
+        .order_by(
+            ChiTietDanhSachKham.ngayKham.desc(),
+            ChiTietDanhSachKham.soThuTu,
+            ChiTietDanhSachKham.maCTDSKham,
         )
-        .where(ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES))
-        .group_by(ChiTietDanhSachKham.ngayKham, ChiTietDanhSachKham.trangThai)
-        .order_by(ChiTietDanhSachKham.ngayKham.desc())
     )
     history: dict[date, dict] = {}
-    for exam_date, status, count in rows:
-        day = history.setdefault(exam_date, {
-            "date": exam_date.isoformat(), "active": 0, "waiting": 0, "confirmed": 0,
+    for registration, phone in rows:
+        day = history.setdefault(registration.ngayKham, {
+            "date": registration.ngayKham,
+            "registrations": [],
         })
-        if status == "CHO_DUYET":
-            day["waiting"] = count
-        else:
-            day["active"] += count
-            if status == "DA_XAC_NHAN":
-                day["confirmed"] += count
+        day["registrations"].append({
+            "slot": registration.soThuTu,
+            "name": registration.hoTen,
+            "phone": phone,
+            "gender": registration.gioiTinh,
+            "birth_year": registration.namSinh,
+        })
     return list(history.values())
 
 

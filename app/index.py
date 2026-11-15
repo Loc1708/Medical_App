@@ -93,6 +93,15 @@ def dashboard():
     return render_template(template)
 
 
+@app.get("/nurse/history")
+@roles_required(Role.NURSE)
+def nurse_exam_history():
+    return render_template(
+        "nurse/history.html",
+        history=dao.nurse_confirmed_exam_history(),
+    )
+
+
 def _render_patient_dashboard(registration_values=None, status: int = 200):
     patient = current_user.benhNhan
     if patient is None:
@@ -213,7 +222,6 @@ def nurse_exam_lists():
         exam_date = _nurse_exam_date(request.args.get("date"))
         limit = dao.daily_patient_limit()
         active, waiting = dao.nurse_exam_list(exam_date)
-        history = dao.nurse_exam_history()
     except ValueError as error:
         return jsonify(error=str(error)), 400
     except SQLAlchemyError:
@@ -228,7 +236,6 @@ def nurse_exam_lists():
         limit=limit,
         active=[_nurse_exam_json(entry) for entry in active],
         waiting=[_nurse_exam_json(entry) for entry in waiting],
-        history=history,
         confirmed=confirmed,
         today=dao.clinic_today().isoformat(),
     )

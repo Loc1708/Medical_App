@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy import or_, cast, String
+from sqlalchemy.orm import joinedload
 from app import app, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
@@ -154,6 +155,7 @@ def patient_exam_history(patient_id: int) -> list[PhieuKham]:
 def patient_exam_registrations(patient_id: int) -> list[ChiTietDanhSachKham]:
     return list(db.session.scalars(
         db.select(ChiTietDanhSachKham)
+        .options(joinedload(ChiTietDanhSachKham.benhNhan))
         .where(ChiTietDanhSachKham.maBN == patient_id)
         .order_by(
             ChiTietDanhSachKham.ngayKham.desc(),
@@ -214,7 +216,7 @@ def nurse_exam_list(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
-        ).order_by(
+        ).options(joinedload(ChiTietDanhSachKham.benhNhan)).order_by(
             ChiTietDanhSachKham.soThuTu,
             ChiTietDanhSachKham.ngayDangKy,
             ChiTietDanhSachKham.maCTDSKham,
@@ -223,7 +225,7 @@ def nurse_exam_list(
     waiting = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.trangThai == "CHO_DUYET",
-        ).order_by(
+        ).options(joinedload(ChiTietDanhSachKham.benhNhan)).order_by(
             ChiTietDanhSachKham.ngayKham,
             ChiTietDanhSachKham.ngayDangKy,
             ChiTietDanhSachKham.maCTDSKham,
@@ -234,7 +236,13 @@ def nurse_exam_list(
 
 def nurse_confirmed_exam_history() -> list[dict]:
     rows = db.session.execute(
-        db.select(ChiTietDanhSachKham, BenhNhan.soDienThoai.label("phone"))
+        db.select(
+            ChiTietDanhSachKham,
+            BenhNhan.hoTen.label("name"),
+            BenhNhan.soDienThoai.label("phone"),
+            BenhNhan.gioiTinh.label("gender"),
+            BenhNhan.namSinh.label("birth_year"),
+        )
         .join(BenhNhan, BenhNhan.maBN == ChiTietDanhSachKham.maBN)
         .where(ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN")
         .order_by(
@@ -244,17 +252,17 @@ def nurse_confirmed_exam_history() -> list[dict]:
         )
     )
     history: dict[date, dict] = {}
-    for registration, phone in rows:
+    for registration, name, phone, gender, birth_year in rows:
         day = history.setdefault(registration.ngayKham, {
             "date": registration.ngayKham,
             "registrations": [],
         })
         day["registrations"].append({
             "slot": registration.soThuTu,
-            "name": registration.hoTen,
+            "name": name,
             "phone": phone,
-            "gender": registration.gioiTinh,
-            "birth_year": registration.namSinh,
+            "gender": gender,
+            "birth_year": birth_year,
         })
     return list(history.values())
 
@@ -334,10 +342,6 @@ def register_patient_exam(
         danhSachKham=_get_or_create_exam_day(exam_date),
         benhNhan=patient,
         ngayKham=exam_date,
-        hoTen=patient.hoTen,
-        gioiTinh=patient.gioiTinh,
-        namSinh=patient.namSinh,
-        diaChi=patient.diaChi,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
         trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",
@@ -370,10 +374,6 @@ def create_nurse_exam(
         danhSachKham=_get_or_create_exam_day(exam_date, nurse_id),
         benhNhan=patient,
         ngayKham=exam_date,
-        hoTen=patient.hoTen,
-        gioiTinh=patient.gioiTinh,
-        namSinh=patient.namSinh,
-        diaChi=patient.diaChi,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
         trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",
@@ -416,10 +416,6 @@ def update_nurse_exam(
     if duplicate is not None:
         raise ValueError("Số điện thoại này đã có trong danh sách ngày đang chọn.")
 
-    registration.hoTen = name
-    registration.gioiTinh = gender
-    registration.namSinh = birth_year
-    registration.diaChi = address
     registration.benhNhan.hoTen = name
     registration.benhNhan.gioiTinh = gender
     registration.benhNhan.namSinh = birth_year

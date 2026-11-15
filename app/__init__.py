@@ -228,6 +228,33 @@ def upgrade_nurse_many_to_many_schema() -> None:
         click.echo("Nurse many-to-many schema already exists; no changes made.")
 
 
+@app.cli.command("drop-nurse-exam-profile-columns")
+@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
+def drop_nurse_exam_profile_columns_command(maintenance: bool) -> None:
+    """Remove duplicate patient profile fields from exam-list details."""
+    from sqlalchemy.exc import SQLAlchemyError
+    from app.migration import drop_nurse_exam_profile_columns
+
+    if not maintenance:
+        raise click.ClickException(
+            "Stop all application writers and pass --maintenance."
+        )
+    try:
+        changed = drop_nurse_exam_profile_columns(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Nurse exam profile column migration failed.")
+        raise click.ClickException(
+            "Could not remove duplicate profile columns; inspect the database before retrying."
+        ) from None
+    click.echo(
+        "Duplicate patient profile columns removed from ChiTietDanhSachKham."
+        if changed
+        else "Duplicate patient profile columns are already absent; no changes made."
+    )
+
+
 @app.cli.command("seed-doctor-demo")
 def seed_doctor_demo() -> None:
     """Create clearly labeled sample records for the doctor workflow."""

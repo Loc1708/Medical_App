@@ -116,10 +116,10 @@ class AccountTests(unittest.TestCase):
         registration = db.session.scalar(db.select(ChiTietDanhSachKham))
         self.assertIsNotNone(registration)
         self.assertEqual(registration.maBN, patient.benhNhan.maBN)
-        self.assertEqual(registration.hoTen, patient.benhNhan.hoTen)
-        self.assertEqual(registration.gioiTinh, patient.benhNhan.gioiTinh)
-        self.assertEqual(registration.namSinh, patient.benhNhan.namSinh)
-        self.assertEqual(registration.diaChi, patient.benhNhan.diaChi)
+        self.assertEqual(registration.benhNhan.hoTen, patient.benhNhan.hoTen)
+        self.assertEqual(registration.benhNhan.gioiTinh, patient.benhNhan.gioiTinh)
+        self.assertEqual(registration.benhNhan.namSinh, patient.benhNhan.namSinh)
+        self.assertEqual(registration.benhNhan.diaChi, patient.benhNhan.diaChi)
         self.assertEqual(registration.trangThai, "CHO_KHAM")
         self.assertEqual(registration.ngayKham, date.today())
         self.assertIsNone(registration.danhSachKham.maNV)
@@ -194,8 +194,8 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(patient.benhNhan.diaChi, "Địa chỉ mới")
         self.assertEqual(patient.benhNhan.gioiTinh, original["gender"])
         self.assertEqual(patient.benhNhan.namSinh, original["birth_year"])
-        self.assertEqual(registration.hoTen, "Người dùng kiểm thử")
-        self.assertEqual(registration.diaChi, "Địa chỉ kiểm thử")
+        self.assertEqual(registration.benhNhan.hoTen, "Tên đã cập nhật")
+        self.assertEqual(registration.benhNhan.diaChi, "Địa chỉ mới")
 
         invalid = self.post("/patient/profile", {
             "hoTen": "Tên khác",
@@ -219,10 +219,10 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         registration = db.session.scalar(db.select(ChiTietDanhSachKham))
         self.assertIsNotNone(registration)
-        self.assertEqual(registration.hoTen, patient.benhNhan.hoTen)
-        self.assertEqual(registration.gioiTinh, patient.benhNhan.gioiTinh)
-        self.assertEqual(registration.namSinh, patient.benhNhan.namSinh)
-        self.assertEqual(registration.diaChi, patient.benhNhan.diaChi)
+        self.assertEqual(registration.benhNhan.hoTen, patient.benhNhan.hoTen)
+        self.assertEqual(registration.benhNhan.gioiTinh, patient.benhNhan.gioiTinh)
+        self.assertEqual(registration.benhNhan.namSinh, patient.benhNhan.namSinh)
+        self.assertEqual(registration.benhNhan.diaChi, patient.benhNhan.diaChi)
 
         dao.create_account(self.data("registration_doctor", Role.DOCTOR))
         doctor_client = app.test_client()
@@ -297,6 +297,11 @@ class AccountTests(unittest.TestCase):
         html = response.get_data(as_text=True)
 
         self.assertEqual(response.status_code, 200)
+        sidebar_start = html.index('<aside class="sidebar"')
+        sidebar_end = html.index("</aside>", sidebar_start)
+        sidebar = html[sidebar_start:sidebar_end]
+        self.assertIn(">Lập phiếu khám</a>", sidebar)
+        self.assertEqual(sidebar.count('class="nav-item'), 1)
         for label in (
             "Lập phiếu khám", "Thông tin bệnh nhân", "Tra cứu thuốc",
             "Thông tin khám", "Đơn thuốc", "Xem lịch sử khám",
@@ -304,7 +309,7 @@ class AccountTests(unittest.TestCase):
             self.assertIn(label, html)
         self.assertIn("Danh sách thuốc còn hàng được tải tự động.", html)
         self.assertIn("data-medicine-pagination", html)
-        self.assertIn("Dữ liệu thử nghiệm", html)
+        self.assertNotIn("Dữ liệu thử nghiệm", html)
         self.assertNotIn("Nguyễn Văn An", html)
         self.assertIn(
             "Chưa nhập mã bệnh nhân. Vui lòng nhập mã bệnh nhân để xem danh sách phiếu khám.",

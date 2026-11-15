@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, inspect, text
 from app import dao, db
 from app.index import app
 from app.migration import (
+    drop_nurse_exam_profile_columns,
     upgrade_nurse_many_to_many_schema,
     upgrade_nurse_queue_schema,
 )
@@ -427,10 +428,10 @@ class NurseQueueTests(unittest.TestCase):
         )
         self.assertIsNotNone(registration)
         self.assertEqual(registration.trangThai, "CHO_DUYET")
-        self.assertEqual(registration.hoTen, patient.benhNhan.hoTen)
-        self.assertEqual(registration.gioiTinh, patient.benhNhan.gioiTinh)
-        self.assertEqual(registration.namSinh, patient.benhNhan.namSinh)
-        self.assertEqual(registration.diaChi, patient.benhNhan.diaChi)
+        self.assertEqual(registration.benhNhan.hoTen, patient.benhNhan.hoTen)
+        self.assertEqual(registration.benhNhan.gioiTinh, patient.benhNhan.gioiTinh)
+        self.assertEqual(registration.benhNhan.namSinh, patient.benhNhan.namSinh)
+        self.assertEqual(registration.benhNhan.diaChi, patient.benhNhan.diaChi)
         self.assertIsNotNone(registration.danhSachKham)
         self.assertEqual(registration.danhSachKham.maNV, self.nurse.nhanVien.maNV)
         page = patient_client.get("/dashboard")
@@ -581,6 +582,13 @@ class NurseQueueMigrationTests(unittest.TestCase):
         table_names = set(inspect(engine).get_table_names())
         self.assertIn("DanhSachKham_legacy", table_names)
         self.assertIn("ChiTietDanhSachKham", table_names)
+        detail_columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("ChiTietDanhSachKham")
+        }
+        self.assertTrue({
+            "HoTen", "GioiTinh", "NamSinh", "DiaChi",
+        }.isdisjoint(detail_columns))
         with engine.connect() as connection:
             registration = connection.execute(text(
                 'SELECT "NgayKham", "SoThuTu", "TrangThai" '
@@ -612,4 +620,41 @@ class NurseQueueMigrationTests(unittest.TestCase):
         self.assertEqual(patient_count, 1)
         self.assertEqual(rule, 40)
         self.assertEqual(foreign_key_errors, [])
+        engine.dispose()
+
+    def test_drop_profile_columns_preserves_exam_detail_rows_and_is_idempotent(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                'CREATE TABLE "ChiTietDanhSachKham" ('
+                '"MaCTDSKham" INTEGER PRIMARY KEY, "MaDSKham" INTEGER NOT NULL, '
+                '"MaBN" INTEGER NOT NULL, "NgayKham" DATE NOT NULL, '
+                '"SoThuTu" INTEGER, "NgayDangKy" DATETIME NOT NULL, '
+                '"TrangThai" VARCHAR(20) NOT NULL, "HoTen" VARCHAR(100) NOT NULL, '
+                '"GioiTinh" VARCHAR(10) NOT NULL, "NamSinh" INTEGER NOT NULL, '
+                '"DiaChi" VARCHAR(255) NOT NULL)'
+            )
+            connection.exec_driver_sql(
+                'INSERT INTO "ChiTietDanhSachKham" VALUES '
+                '(1, 2, 3, "2026-11-14", 1, "2026-11-14 08:00:00", '
+                '"CHO_KHAM", "Bệnh nhân", "Nữ", 1990, "Địa chỉ")'
+            )
+
+        self.assertTrue(drop_nurse_exam_profile_columns(engine))
+        self.assertFalse(drop_nurse_exam_profile_columns(engine))
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns("ChiTietDanhSachKham")
+        }
+        self.assertTrue({
+            "HoTen", "GioiTinh", "NamSinh", "DiaChi",
+        }.isdisjoint(columns))
+        with engine.connect() as connection:
+            registration = connection.execute(text(
+                'SELECT "MaBN", "NgayKham", "TrangThai" '
+                'FROM "ChiTietDanhSachKham" WHERE "MaCTDSKham" = 1'
+            )).one()
+        self.assertEqual(registration.MaBN, 3)
+        self.assertEqual(registration.NgayKham, "2026-11-14")
+        self.assertEqual(registration.TrangThai, "CHO_KHAM")
         engine.dispose()

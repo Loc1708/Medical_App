@@ -224,13 +224,14 @@ def _nurse_exam_payload(payload: object) -> dict:
 
 
 def _nurse_exam_json(registration) -> dict:
+    patient = registration.benhNhan
     return {
         "id": registration.maCTDSKham,
-        "name": registration.hoTen,
-        "gender": registration.gioiTinh,
-        "birthYear": registration.namSinh,
-        "phone": registration.benhNhan.soDienThoai,
-        "address": registration.diaChi,
+        "name": patient.hoTen,
+        "gender": patient.gioiTinh,
+        "birthYear": patient.namSinh,
+        "phone": patient.soDienThoai,
+        "address": patient.diaChi,
         "status": registration.trangThai,
         "slot": registration.soThuTu,
         "examDate": registration.ngayKham.isoformat(),

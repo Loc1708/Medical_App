@@ -189,10 +189,6 @@ class ChiTietDanhSachKham(db.Model):
     trangThai: Mapped[str] = mapped_column(
         "TrangThai", db.String(20), nullable=False, default="CHO_KHAM",
     )
-    hoTen: Mapped[str] = mapped_column("HoTen", db.String(100), nullable=False)
-    gioiTinh: Mapped[str] = mapped_column("GioiTinh", db.String(10), nullable=False)
-    namSinh: Mapped[int] = mapped_column("NamSinh", db.Integer, nullable=False)
-    diaChi: Mapped[str] = mapped_column("DiaChi", db.String(255), nullable=False)
     danhSachKham: Mapped[DanhSachKham] = relationship(
         back_populates="chiTietDanhSachKhams",
     )

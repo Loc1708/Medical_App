@@ -5,7 +5,6 @@
     <div>
         <span class="eyebrow">DÀNH CHO BỆNH NHÂN</span>
         <h1 class="h3 mt-2">Đăng ký khám</h1>
-        <p class="text-muted mb-0">Thông tin cá nhân sẽ tự động lấy từ hồ sơ bệnh nhân của bạn.</p>
     </div>
 </div>
 
@@ -58,7 +57,7 @@
                         <span class="text-muted">—</span>
                         {% endif %}
                     </td>
-                    <td>{{ registration.hoTen }}</td>
+                    <td>{{ registration.benhNhan.hoTen }}</td>
                     <td>
                         {% if registration.trangThai == 'CHO_DUYET' %}
                         <span class="role-badge">Chờ y tá duyệt</span>

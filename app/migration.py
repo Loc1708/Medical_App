@@ -15,6 +15,59 @@ STAGE = "_integer_stage"
 BACKUP = "_uuid_backup"
 NURSE_SLOT_INDEX = "uq_dskham_ngay_thu_tu"
 NURSE_DAY_INDEX = "ix_dskham_ngay_trang_thai"
+NURSE_DETAIL_PROFILE_COLUMNS = ("HoTen", "GioiTinh", "NamSinh", "DiaChi")
+NURSE_DETAIL_REQUIRED_COLUMNS = {
+    "MaCTDSKham", "MaDSKham", "MaBN", "NgayKham",
+    "SoThuTu", "NgayDangKy", "TrangThai",
+}
+
+
+def drop_nurse_exam_profile_columns(engine: Engine) -> bool:
+    if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
+        raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
+    if "ChiTietDanhSachKham" not in inspect(engine).get_table_names():
+        raise ValueError("ChiTietDanhSachKham is missing; run init-db first.")
+
+    def drop_columns(connection) -> bool:
+        columns = {
+            column["name"]
+            for column in inspect(connection).get_columns("ChiTietDanhSachKham")
+        }
+        missing = NURSE_DETAIL_REQUIRED_COLUMNS - columns
+        if missing:
+            raise ValueError(
+                "ChiTietDanhSachKham has an incomplete schema; inspect before retrying."
+            )
+        quote = connection.dialect.identifier_preparer.quote
+        changed = False
+        for column in NURSE_DETAIL_PROFILE_COLUMNS:
+            if column in columns:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {quote('ChiTietDanhSachKham')} "
+                    f"DROP COLUMN {quote(column)}"
+                )
+                changed = True
+        return changed
+
+    if engine.dialect.name != "sqlite":
+        with engine.begin() as connection:
+            return drop_columns(connection)
+
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
+        try:
+            with connection.begin():
+                changed = drop_columns(connection)
+        finally:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()
+        violations = connection.exec_driver_sql("PRAGMA foreign_key_check").all()
+        if violations:
+            raise ValueError(
+                "Foreign-key violations found after migration; inspect the database."
+            )
+        return changed
 
 
 def migrate_account_ids(engine: Engine) -> bool:
@@ -427,10 +480,6 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
         Column("SoThuTu", Integer, nullable=True),
         Column("NgayDangKy", DateTime, nullable=False),
         Column("TrangThai", String(20), nullable=False),
-        Column("HoTen", String(100), nullable=False),
-        Column("GioiTinh", String(10), nullable=False),
-        Column("NamSinh", Integer, nullable=False),
-        Column("DiaChi", String(255), nullable=False),
         ForeignKeyConstraint(
             ["MaDSKham", "NgayKham"],
             [f"{stage_day_name}.MaDSKham", f"{stage_day_name}.NgayKham"],
@@ -460,10 +509,6 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
                 "SoThuTu": row["SoThuTu"],
                 "NgayDangKy": row["NgayDangKy"],
                 "TrangThai": row["TrangThai"],
-                "HoTen": row["HoTen"],
-                "GioiTinh": row["GioiTinh"],
-                "NamSinh": row["NamSinh"],
-                "DiaChi": row["DiaChi"],
             }
             for row in source_rows
         ]
@@ -483,17 +528,12 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
                 staged_detail.c.SoThuTu,
                 staged_detail.c.NgayDangKy,
                 staged_detail.c.TrangThai,
-                staged_detail.c.HoTen,
-                staged_detail.c.GioiTinh,
-                staged_detail.c.NamSinh,
-                staged_detail.c.DiaChi,
             ).order_by(staged_detail.c.MaCTDSKham)
         ).all()
         expected_rows = [
             (
                 row["MaCTDSKham"], row["MaDSKham"], row["MaBN"], row["NgayKham"],
-                row["SoThuTu"], row["NgayDangKy"], row["TrangThai"], row["HoTen"],
-                row["GioiTinh"], row["NamSinh"], row["DiaChi"],
+                row["SoThuTu"], row["NgayDangKy"], row["TrangThai"],
             )
             for row in sorted(detail_rows, key=lambda item: item["MaCTDSKham"])
         ]

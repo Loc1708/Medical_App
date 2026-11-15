@@ -165,9 +165,9 @@ sao lưu database trước khi đổi cấu trúc. Chạy migration sau một l�
 ```
 
 Lệnh chuẩn bị schema hàng chờ nếu cần, chuyển mỗi ngày thành một dòng `DanhSachKham`
-và mỗi lượt bệnh nhân thành một dòng `ChiTietDanhSachKham`. Trạng thái, số thứ tự,
-thời điểm đăng ký và thông tin tại thời điểm đăng ký được giữ ở bảng chi tiết.
-Các dòng cũ được sao chép và kiểm tra; bảng cũ được giữ nguyên với tên
+và mỗi lượt bệnh nhân thành một dòng `ChiTietDanhSachKham`. Trạng thái, số thứ tự
+và thời điểm đăng ký được giữ ở bảng chi tiết; hồ sơ bệnh nhân được tham chiếu
+bằng `MaBN`. Các dòng cũ được sao chép và kiểm tra; bảng cũ được giữ nguyên với tên
 `DanhSachKham_legacy`. `MaNV` để trống cho đến khi y tá thao tác với danh sách ngày.
 Mỗi ngày danh sách chính nhận tối đa theo `SO_BENH_NHAN_TOI_DA`; lượt vượt giới hạn
 được lưu với trạng thái `CHO_DUYET`. Chỉ duyệt từ hôm nay trở đi và khi ngày đích
@@ -175,6 +175,18 @@ còn chỗ. Hủy lượt khám giải phóng chỗ nhưng vẫn giữ bản ghi
 Nếu migration báo lỗi và để lại `_DanhSachKham_m2m` hoặc
 `_ChiTietDanhSachKham_m2m`, hãy kiểm tra database trước khi chạy lại; không tự xóa
 các bảng này hay bảng backup.
+
+Với database đang có bốn cột hồ sơ trùng trong `ChiTietDanhSachKham`, dừng ứng dụng,
+sao lưu database và chạy migration:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app drop-nurse-exam-profile-columns --maintenance
+```
+
+Migration xóa `HoTen`, `GioiTinh`, `NamSinh`, `DiaChi` khỏi bảng chi tiết và giữ
+nguyên các lượt khám. Thông tin bệnh nhân được đọc qua `MaBN` từ bảng `BenhNhan`;
+vì vậy lịch sử hiển thị thông tin hồ sơ hiện tại, không còn giữ bản chụp thông tin
+tại thời điểm đăng ký.
 
 Để tạo dữ liệu DEMO cho luồng bác sĩ trên database hiện cấu hình, sau migration, chạy:
 
@@ -200,10 +212,10 @@ cũ còn bảng `DanhSachKham` dạng từng lượt đăng ký, hãy chạy mig
 thay vì tạo bảng thủ công. Bệnh nhân đăng ký qua bảng chi tiết liên kết hồ sơ
 `BenhNhan`, còn bảng danh sách lưu ngày khám và y tá phụ trách. Khi bệnh nhân
 bấm đăng ký, ứng dụng lấy họ tên, giới tính, năm sinh và địa chỉ trực tiếp từ
-hồ sơ đã lưu rồi sao chép vào lượt khám; bệnh nhân không cần nhập lại và dữ liệu
-gửi từ trình duyệt không thay thế được thông tin trong hồ sơ. Tại `/patient/profile`,
+liên kết hồ sơ đã lưu; bệnh nhân không cần nhập lại và dữ liệu gửi từ trình duyệt
+không thay thế được thông tin trong hồ sơ. Tại `/patient/profile`,
 bệnh nhân có thể sửa họ tên, số điện thoại và địa chỉ; giới tính và năm sinh
-không sửa được. Thay đổi hồ sơ không viết lại thông tin snapshot của lượt khám cũ.
+không sửa được. Lịch sử lượt khám hiển thị hồ sơ hiện tại của bệnh nhân.
 
 Mở http://127.0.0.1:5000. Dừng bằng Ctrl+C.
 Lệnh trên bật debug, chỉ dùng cho môi trường development.

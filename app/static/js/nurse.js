@@ -8,6 +8,7 @@ if (nurseApp) {
     const patientCodeInput = nurseApp.querySelector("#nurse-patient-code");
     const patientSuggestions = nurseApp.querySelector("[data-patient-suggestions]");
     const patientLookupResult = nurseApp.querySelector("[data-patient-lookup-result]");
+    const dayLockedWarning = nurseApp.querySelector("[data-day-locked-warning]");
     const searchForm = nurseApp.querySelector("[data-search-form]");
     const searchInput = nurseApp.querySelector("#nurse-search");
     const patientRows = nurseApp.querySelector("[data-patient-rows]");
@@ -21,6 +22,7 @@ if (nurseApp) {
     const approvalTarget = nurseApp.querySelector("[data-approval-target]");
     const status = nurseApp.querySelector("[data-nurse-status]");
     const confirmedStatus = nurseApp.querySelector("[data-confirmed-status]");
+    const confirmButton = nurseApp.querySelector("[data-confirm-list]");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     let selectedDate = "";
     let clinicToday = todayValue();
@@ -35,6 +37,7 @@ if (nurseApp) {
     let activePatients = [];
     let waitingPatients = [];
     let dayConfirmed = false;
+    let dayLocked = false;
 
     function todayValue() {
         const now = new Date();
@@ -94,6 +97,7 @@ if (nurseApp) {
         activePatients = data.active;
         waitingPatients = data.waiting;
         dayConfirmed = data.confirmed;
+        dayLocked = data.locked;
         nurseApp.dataset.maxPatients = String(dailyLimit);
         limitLabel.textContent = `Giới hạn: ${dailyLimit} bệnh nhân/ngày`;
         renderAll();
@@ -147,6 +151,10 @@ if (nurseApp) {
     }
 
     function renderPatientSuggestions(patients) {
+        if (dayLocked) {
+            clearPatientSuggestions();
+            return;
+        }
         matchedPatients = patients;
         patientSuggestions.replaceChildren();
         if (!patients.length) {
@@ -170,6 +178,7 @@ if (nurseApp) {
     }
 
     async function searchPatientsByCode(query, requestId) {
+        if (dayLocked) return;
         try {
             const url = new URL("/nurse/api/patients", window.location.origin);
             url.searchParams.set("q", query);
@@ -198,7 +207,8 @@ if (nurseApp) {
         details.append(name, demographics);
 
         const addButton = makeButton(
-            "Thêm vào danh sách", "btn btn-primary", "addFoundPatient", patient.code
+            "Thêm vào danh sách", "btn btn-primary", "addFoundPatient",
+            patient.code, dayLocked
         );
         patientLookupResult.replaceChildren(details, addButton);
         patientLookupResult.hidden = false;
@@ -245,8 +255,22 @@ if (nurseApp) {
         patientRows.replaceChildren();
         patientCount.textContent = `${activePatients.length}/${dailyLimit}`;
         confirmedStatus.textContent = dayConfirmed
-            ? "Danh sách hiện tại đã được xác nhận."
-            : "";
+            ? `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt. Không thể thêm bệnh nhân mới vào ngày này.`
+            : dayLocked
+                ? `Ngày ${formatDate(selectedDate)} đã có lượt được xác nhận; không thể thêm bệnh nhân. Hãy xác nhận các lượt còn lại để chốt danh sách.`
+                : "";
+        dayLockedWarning.hidden = !dayLocked;
+        if (dayLocked) {
+            dayLockedWarning.textContent = dayConfirmed
+                ? `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt. Không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này.`
+                : `Ngày ${formatDate(selectedDate)} đã có lượt được xác nhận; không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này. Hãy xác nhận các lượt còn lại để hoàn tất.`;
+            clearPatientSuggestions();
+        }
+        patientCodeInput.disabled = dayLocked;
+        const addButton = patientLookupResult.querySelector("[data-add-found-patient]");
+        if (addButton) addButton.disabled = dayLocked;
+        confirmButton.disabled = dayConfirmed;
+        confirmButton.textContent = dayConfirmed ? "Danh sách đã chốt" : "Xác nhận danh sách";
 
         if (!visible.length) {
             const row = document.createElement("tr");
@@ -292,9 +316,11 @@ if (nurseApp) {
         waitingRows.replaceChildren();
         waitingCount.textContent = String(waitingPatients.length);
         const targetIsPast = selectedDate < clinicToday;
-        approvalTarget.textContent = targetIsPast
-            ? "Không thể duyệt vào ngày đã qua."
-            : `Ngày khám đích: ${formatDate(selectedDate)}`;
+        approvalTarget.textContent = dayLocked
+            ? `Ngày khám đích ${formatDate(selectedDate)} đã được chốt; không thể duyệt thêm bệnh nhân.`
+            : targetIsPast
+                ? "Không thể duyệt vào ngày đã qua."
+                : `Ngày khám đích: ${formatDate(selectedDate)}`;
         if (!visible.length) {
             const row = document.createElement("tr");
             const cell = makeCell(
@@ -319,7 +345,7 @@ if (nurseApp) {
                     makeButton(
                         "Duyệt vào ngày đã chọn", "btn btn-sm btn-outline-success",
                         "approvePatient", patient.id,
-                        targetIsPast || activePatients.length >= dailyLimit
+                        dayLocked || targetIsPast || activePatients.length >= dailyLimit
                     ),
                     makeIconButton("Hủy lượt khám", "cancelPatient", patient.id)
                 );
@@ -406,6 +432,13 @@ if (nurseApp) {
     patientLookupResult.addEventListener("click", async event => {
         const button = event.target.closest("[data-add-found-patient]");
         if (!button || button.disabled || !matchedPatient) return;
+        if (dayLocked) {
+            showStatus(
+                `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt; không thể thêm bệnh nhân mới.`,
+                "error"
+            );
+            return;
+        }
         button.disabled = true;
         const patientName = matchedPatient.name;
         const statusKind = activePatients.length >= dailyLimit ? "info" : "success";
@@ -452,6 +485,7 @@ if (nurseApp) {
         activePatients = [];
         waitingPatients = [];
         dayConfirmed = false;
+        dayLocked = false;
         renderAll();
         showStatus("");
         try {
@@ -505,7 +539,7 @@ if (nurseApp) {
         renderWaiting();
     });
 
-    nurseApp.querySelector("[data-confirm-list]").addEventListener("click", async () => {
+    confirmButton.addEventListener("click", async () => {
         if (!activePatients.length) {
             showStatus("Danh sách đang trống; hãy thêm ít nhất một bệnh nhân trước khi xác nhận.", "error");
             return;

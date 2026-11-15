@@ -98,6 +98,16 @@ class NurseQueueTests(unittest.TestCase):
             "patient_code": patient.maHienThi,
         }
 
+    def test_nurse_dashboard_explains_finalized_day_restrictions(self):
+        response = self.client.get("/dashboard")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("data-day-locked-warning", html)
+        self.assertIn(
+            "không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này",
+            html,
+        )
+
     def test_forty_first_patient_is_persisted_in_waiting_list(self):
         responses = [
             self._api("POST", "/nurse/api/lists", self._patient(index))
@@ -265,6 +275,65 @@ class NurseQueueTests(unittest.TestCase):
             "GET", f"/nurse/api/lists?date={future_date.isoformat()}"
         )
         self.assertEqual(len(day.get_json()["active"]), 1)
+
+    def test_confirmed_exam_day_rejects_new_patient_additions(self):
+        exam_date = dao.clinic_today()
+        first = self._api(
+            "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
+        )
+        self.assertEqual(first.status_code, 201)
+        confirmed = self._api(
+            "POST",
+            "/nurse/api/lists/confirm",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(confirmed.status_code, 200)
+
+        rejected = self._api(
+            "POST", "/nurse/api/lists", self._patient(2, exam_date.isoformat())
+        )
+
+        self.assertEqual(rejected.status_code, 409)
+        self.assertIn("đã được xác nhận và chốt", rejected.get_json()["error"])
+        day = self._api(
+            "GET", f"/nurse/api/lists?date={exam_date.isoformat()}"
+        ).get_json()
+        self.assertTrue(day["confirmed"])
+        self.assertTrue(day["locked"])
+        self.assertEqual(len(day["active"]), 1)
+        self.assertEqual(day["active"][0]["status"], "DA_XAC_NHAN")
+
+    def test_waiting_patient_cannot_be_approved_into_confirmed_exam_day(self):
+        self.limit.giaTri = Decimal("1")
+        db.session.commit()
+        exam_date = dao.clinic_today()
+        active = self._api(
+            "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
+        )
+        waiting = self._api(
+            "POST", "/nurse/api/lists", self._patient(2, exam_date.isoformat())
+        )
+        self.assertEqual(active.status_code, 201)
+        self.assertEqual(waiting.status_code, 201)
+        waiting_id = waiting.get_json()["patient"]["id"]
+        self._api(
+            "POST",
+            "/nurse/api/lists/confirm",
+            {"date": exam_date.isoformat()},
+        )
+
+        rejected = self._api(
+            "POST",
+            f"/nurse/api/lists/{waiting_id}/approve",
+            {"date": exam_date.isoformat()},
+        )
+
+        self.assertEqual(rejected.status_code, 409)
+        self.assertIn("đã được xác nhận và chốt", rejected.get_json()["error"])
+        self.assertEqual(
+            db.session.get(ChiTietDanhSachKham, waiting_id).trangThai,
+            "CHO_DUYET",
+        )
 
     def test_nurse_cannot_add_patient_from_unrecognized_code_or_raw_fields(self):
         baseline = db.session.scalar(

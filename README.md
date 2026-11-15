@@ -283,7 +283,8 @@ Thư mục `.venv`, `instance`, các tệp `.env` và Python cache được Git 
   duyệt bệnh nhân chờ, tìm kiếm, chọn ngày, phân trang và xác nhận
   danh sách đã lưu; danh sách chính và hàng chờ được lưu vào database, chưa gửi SMS.
   Hàng chờ hiển thị trên mọi ngày đang chọn; y tá có thể chuyển lượt chờ sang ngày
-  từ hôm nay trở đi nếu ngày đó còn chỗ.
+  từ hôm nay trở đi nếu ngày đó còn chỗ. Khi đã có lượt được xác nhận, ngày khám
+  được chốt và không nhận thêm lượt đăng ký hoặc duyệt lượt chờ vào ngày đó.
   Nghiệp vụ thu ngân chưa được triển khai.
 
 Tài khoản quản trị khởi tạo riêng cho máy này có thông tin trong

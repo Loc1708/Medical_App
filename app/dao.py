@@ -24,6 +24,10 @@ class DailyCapacityReached(ValueError):
     pass
 
 
+class ConfirmedExamDay(ValueError):
+    pass
+
+
 class PastExamDate(ValueError):
     pass
 
@@ -186,6 +190,23 @@ def _next_daily_slot(exam_date: date) -> int | None:
     return next((slot for slot in range(1, limit + 1) if slot not in used_slots), None)
 
 
+def _ensure_exam_day_is_open(exam_date: date) -> None:
+    confirmed_registration = db.session.scalar(
+        db.select(ChiTietDanhSachKham.maCTDSKham)
+        .where(
+            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
+        )
+        .limit(1)
+        .with_for_update()
+    )
+    if confirmed_registration is not None:
+        raise ConfirmedExamDay(
+            f"Danh sách khám ngày {exam_date.strftime('%d/%m/%Y')} "
+            "đã được xác nhận và chốt; không thể thêm bệnh nhân mới."
+        )
+
+
 def nurse_exam_list(
     exam_date: date,
 ) -> tuple[list[ChiTietDanhSachKham], list[ChiTietDanhSachKham]]:
@@ -297,6 +318,7 @@ def register_patient_exam(
     exam_date: date | None = None,
 ) -> ChiTietDanhSachKham:
     exam_date = exam_date or datetime.now(timezone(timedelta(hours=7))).date()
+    _ensure_exam_day_is_open(exam_date)
     slot = _next_daily_slot(exam_date)
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham).where(
@@ -331,6 +353,7 @@ def create_nurse_exam(
     patient: BenhNhan,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
+    _ensure_exam_day_is_open(exam_date)
     slot = _next_daily_slot(exam_date)
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham)
@@ -436,6 +459,8 @@ def approve_waiting_nurse_exam(
     )
     if registration is None:
         raise LookupError("Không tìm thấy lượt khám đang chờ duyệt.")
+
+    _ensure_exam_day_is_open(target_date)
 
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham).where(

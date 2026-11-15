@@ -253,12 +253,14 @@ def nurse_exam_lists():
     confirmed = bool(active) and all(
         entry.trangThai == "DA_XAC_NHAN" for entry in active
     )
+    locked = any(entry.trangThai == "DA_XAC_NHAN" for entry in active)
     return jsonify(
         date=exam_date.isoformat(),
         limit=limit,
         active=[_nurse_exam_json(entry) for entry in active],
         waiting=[_nurse_exam_json(entry) for entry in waiting],
         confirmed=confirmed,
+        locked=locked,
         today=dao.clinic_today().isoformat(),
     )
 
@@ -299,7 +301,12 @@ def nurse_create_exam():
         )
     except ValueError as error:
         db.session.rollback()
-        return jsonify(error=str(error)), 409 if isinstance(error, dao.DailyCapacityReached) else 400
+        status_code = (
+            409
+            if isinstance(error, (dao.DailyCapacityReached, dao.ConfirmedExamDay))
+            else 400
+        )
+        return jsonify(error=str(error)), status_code
     except SQLAlchemyError:
         db.session.rollback()
         app.logger.exception("Nurse patient registration failed.")
@@ -360,6 +367,9 @@ def nurse_approve_exam(registration_id: int):
         )
     except LookupError as error:
         return jsonify(error=str(error)), 404
+    except dao.ConfirmedExamDay as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409
     except dao.DailyCapacityReached as error:
         db.session.rollback()
         return jsonify(error=str(error)), 409

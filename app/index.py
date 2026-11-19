@@ -8,7 +8,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import app, dao, db
 from app.models import BacSi, Role, Thuoc
-from app.utils import account_data, csrf_token, protect_csrf, roles_required
+from app.utils import account_data, csrf_token, protect_csrf, roles_required, send_sms
 
 
 app.before_request(protect_csrf)
@@ -408,8 +408,23 @@ def nurse_confirm_exam_day():
         db.session.rollback()
         app.logger.exception("Nurse exam-list confirmation failed.")
         return jsonify(error="Không thể xác nhận danh sách trong cơ sở dữ liệu."), 500
-    message = "Danh sách đã được xác nhận." if confirmed_count else "Danh sách đã được xác nhận trước đó."
-    return jsonify(message=message)
+    
+    if not confirmed_count:
+        return jsonify(message="Danh sách đã được xác nhận trước đó.")
+    sent = failed = 0
+    active, _waiting = dao.nurse_exam_list(exam_date)
+    for entry in active:
+        patient = entry.benhNhan
+        content = f"Code: {entry.soThuTu or 0:02d}"
+        #f"Lich kham: {exam_date.strftime('%d/%m/%Y')}, STT: {entry.soThuTu}."
+        ok, data = send_sms(patient.soDienThoai.lstrip("+"), content)
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+            app.logger.warning("SMS that bai cho benh nhan %s: %s", patient.maBN, data)
+
+    return jsonify(message=f"Danh sách đã được xác nhận. Đã gửi {sent} SMS, lỗi {failed}.")
 
 
 @app.get("/doctor/api/patients")

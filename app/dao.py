@@ -522,6 +522,7 @@ def confirm_nurse_exam_day(exam_date: date, nurse_id: int | None = None) -> int:
     for registration in registrations:
         registration.trangThai = "DA_XAC_NHAN"
     _commit_exam_list_change()
+    
     return len(registrations)
 
 

@@ -2,12 +2,15 @@ import re
 import secrets
 from datetime import date
 from functools import wraps
+import os
+import requests
 
 from flask import abort, request, session
 from flask_login import current_user
 
 from app.models import Role
 
+ESMS_URL = "https://rest.esms.vn/MainService.svc/json/SendMultipleMessage_V4_post_json/"
 
 def csrf_token() -> str:
     if "csrf_token" not in session:
@@ -83,3 +86,27 @@ def account_data(form, *, registration: bool = False) -> dict:
             raise ValueError("Chuyên khoa bắt buộc và tối đa 100 ký tự.")
         data["chuyenKhoa"] = specialty
     return data
+
+def send_sms(phone, content):
+    mode = os.getenv("SMS_MODE", "mock")
+    if mode == "mock":
+        print(f"[MOCK SMS] {phone}: {content}")
+        return True, {"mode": "mock"}
+
+    payload = {
+        "ApiKey": os.getenv("ESMS_API_KEY"),
+        "SecretKey": os.getenv("ESMS_SECRET_KEY"),
+        "Phone": phone,
+        "Content": content,
+        "Brandname": "Baotrixemay",
+        "SmsType": "2",
+        "IsUnicode": "0",
+        "Sandbox": "1" if mode == "sandbox" else "0",
+    }
+    try:
+        res = requests.post(ESMS_URL, json=payload, timeout=10)
+        data = res.json()
+        print("ESMS:", data, "| phone:", phone, "| mode:", mode)
+        return data.get("CodeResult") == "100", data
+    except (requests.RequestException, ValueError) as e:
+        return False, {"error": str(e)}

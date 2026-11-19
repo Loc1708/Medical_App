@@ -9,4 +9,7 @@
     {% include "components/account_editor.html" %}
 </div>
 {% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin/accounts.js') }}"></script>
+{% endblock %}
 

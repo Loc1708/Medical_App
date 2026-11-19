@@ -14,8 +14,14 @@ Medical_App\
 │   ├── models.py
 │   ├── dao.py
 │   ├── utils.py
-│   ├── admin.py
 │   ├── migration.py
+│   ├── routes\
+│   │   ├── __init__.py
+│   │   ├── admin.py
+│   │   ├── cashier.py
+│   │   ├── doctor.py
+│   │   ├── nurse.py
+│   │   └── patient.py
 │   ├── static\
 │   │   ├── css\
 │   │   ├── images\
@@ -44,11 +50,12 @@ Medical_App\
 ```
 
 - `app\__init__.py`: khởi tạo đối tượng Flask `app`, cấu hình và SQLAlchemy `db`.
-- `app\index.py`: khai báo route, xử lý request và chạy server local.
+- `app\index.py`: route dùng chung, xác thực, điều hướng dashboard và xử lý lỗi.
+- `app\routes\`: route/API nghiệp vụ theo từng vai trò, bao gồm cả quản trị.
 - `app\models.py`: khai báo các model và quan hệ CSDL.
 - `app\dao.py`: truy vấn, thêm, sửa và xóa dữ liệu.
 - `app\utils.py`: hàm tính toán và tiện ích dùng chung.
-- `app\admin.py`: các route quản trị tài khoản, thuốc, đơn vị, quy định và báo cáo.
+- `app\routes\admin.py`: các route quản trị tài khoản, thuốc, đơn vị, quy định và báo cáo.
 - `app\migration.py`: chuyển khóa UUID cũ sang số nguyên, giữ bảng dự phòng.
 - `templates`: giao diện Jinja2; `layout` chứa bố cục dùng chung,
   `components` chứa thông báo, khung modal, form tài khoản và ô mật khẩu tái sử dụng.
@@ -58,8 +65,10 @@ Medical_App\
 lịch sử khám, tra cứu thuốc, lưu nháp và lập phiếu), quản lý thuốc/đơn vị,
 quy định và báo cáo tháng. Luồng thanh toán chưa triển khai trong code hiện tại.
 Không tạo lại các thư mục `controllers`, `models`, `services` của bộ khung cũ.
-Controller được thể hiện bằng các hàm route trong `index.py`, `admin.py`;
-truy cập dữ liệu ở `dao.py`.
+Controller được thể hiện bằng các hàm route trong `index.py` và `routes\` theo vai trò;
+truy cập dữ liệu ở `dao.py`. JavaScript chung nằm trong `static/js/main.js`;
+mỗi vai trò có file riêng (bác sĩ `doctor.js`, y tá `nurse.js`, thu ngân `cashier.js`),
+các thao tác quản trị tài khoản nằm trong `static/js/admin/accounts.js`.
 Frontend dùng HTML/Jinja2, Bootstrap 5.0.2 và JavaScript thuần; không có npm build.
 Logo trên header và favicon của các trang dùng chung biểu tượng
 `static\images\2.png`.

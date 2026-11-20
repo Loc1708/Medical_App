@@ -7,16 +7,16 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import app, dao, db
 from app.models import BacSi, Role, Thuoc
-from app.utils import roles_required
+from app.utils import yeuCauVaiTro
 
 
-@app.get("/doctor/api/patients")
-@roles_required(Role.DOCTOR)
-def doctor_find_patient():
+@app.get("/doctor/api/patients", endpoint="doctor_find_patient")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiTimBenhNhan():
     code = request.args.get("code", "").strip()
     if not code:
         return jsonify(error="Vui lòng nhập mã bệnh nhân."), 400
-    patient = dao.find_patient_by_code(code)
+    patient = dao.timKiemBenhNhanTheoId(code)
     if patient is None:
         return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
     return jsonify(patient={
@@ -29,10 +29,10 @@ def doctor_find_patient():
     })
 
 
-@app.get("/doctor/api/patients/<code>/history")
-@roles_required(Role.DOCTOR)
-def doctor_patient_history(code: str):
-    patient = dao.find_patient_by_code(code)
+@app.get("/doctor/api/patients/<code>/history", endpoint="doctor_patient_history")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiXemLichSuKham(code: str):
+    patient = dao.timKiemBenhNhanTheoId(code)
     if patient is None:
         return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
     raw_page = request.args.get("page", "1")
@@ -40,7 +40,7 @@ def doctor_patient_history(code: str):
         return jsonify(error="Số trang không hợp lệ."), 400
     page = int(raw_page)
     page_size = 5
-    history, total = dao.patient_exam_history(
+    history, total = dao.layDanhSachLichSuKham(
         patient.maBN,
         page=page,
         page_size=page_size,
@@ -69,11 +69,11 @@ def doctor_patient_history(code: str):
         pages=(total + page_size - 1) // page_size)
 
 
-@app.get("/doctor/api/exams/<exam_id>")
-@roles_required(Role.DOCTOR)
-def doctor_get_draft(exam_id: str):
+@app.get("/doctor/api/exams/<exam_id>", endpoint="doctor_get_draft")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiLayBanNhap(exam_id: str):
     doctor_id = current_user.nhanVien.maNV if current_user.nhanVien else None
-    draft = dao.find_doctor_draft(exam_id, doctor_id) if doctor_id is not None else None
+    draft = dao.timBanNhapCuaBacSi(exam_id, doctor_id) if doctor_id is not None else None
     if draft is None:
         return jsonify(error="Không tìm thấy bản nháp của bác sĩ này."), 404
     return jsonify(exam={
@@ -92,13 +92,13 @@ def doctor_get_draft(exam_id: str):
     })
 
 
-@app.get("/doctor/api/drafts")
-@roles_required(Role.DOCTOR)
-def doctor_list_drafts():
+@app.get("/doctor/api/drafts", endpoint="doctor_list_drafts")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiXemDanhSachBanNhap():
     doctor_id = current_user.nhanVien.maNV if current_user.nhanVien else None
     if doctor_id is None:
         return jsonify(error="Tài khoản bác sĩ chưa có hồ sơ chuyên môn."), 409
-    drafts = dao.doctor_drafts(doctor_id)
+    drafts = dao.layBanNhapCuaBacSi(doctor_id)
     return jsonify(drafts=[{
         "id": draft.maPhieuKham,
         "patient_code": draft.benhNhan.maHienThi,
@@ -110,26 +110,26 @@ def doctor_list_drafts():
     } for draft in drafts])
 
 
-@app.delete("/doctor/api/drafts/<exam_id>")
-@roles_required(Role.DOCTOR)
-def doctor_delete_draft(exam_id: str):
+@app.delete("/doctor/api/drafts/<exam_id>", endpoint="doctor_delete_draft")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiXoaBanNhap(exam_id: str):
     doctor_id = current_user.nhanVien.maNV if current_user.nhanVien else None
     if doctor_id is None:
         return jsonify(error="Tài khoản bác sĩ chưa có hồ sơ chuyên môn."), 409
-    if not dao.delete_doctor_draft(exam_id, doctor_id):
+    if not dao.xoaBanNhapCuaBacSi(exam_id, doctor_id):
         return jsonify(error="Không tìm thấy bản nháp của bác sĩ này."), 404
     return jsonify(message="Đã xóa bản nháp.")
 
 
-@app.get("/doctor/api/medicines")
-@roles_required(Role.DOCTOR)
-def doctor_search_medicines():
+@app.get("/doctor/api/medicines", endpoint="doctor_search_medicines")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiTraCuuThuoc():
     keyword = request.args.get("q", "").strip()
     raw_page = request.args.get("page", "1")
     if not re.fullmatch(r"[0-9]{1,6}", raw_page) or int(raw_page) < 1:
         return jsonify(error="Số trang không hợp lệ."), 400
     page = int(raw_page)
-    medicines, total = dao.search_medicines(keyword, page=page)
+    medicines, total = dao.timKiemThuoc(keyword, page=page)
     return jsonify(medicines=[{
         "code": medicine.maThuoc,
         "name": medicine.tenThuoc,
@@ -140,14 +140,14 @@ def doctor_search_medicines():
         pages=(total + 9) // 10)
 
 
-@app.post("/doctor/api/exams")
-@roles_required(Role.DOCTOR)
-def doctor_create_exam():
+@app.post("/doctor/api/exams", endpoint="doctor_create_exam")
+@yeuCauVaiTro(Role.DOCTOR)
+def bacSiLapPhieuKham():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify(error="Dữ liệu phiếu khám không hợp lệ."), 400
 
-    patient = dao.find_patient_by_code(str(payload.get("patient_code", "")))
+    patient = dao.timKiemBenhNhanTheoId(str(payload.get("patient_code", "")))
     if patient is None:
         return jsonify(error="Vui lòng tìm bệnh nhân hợp lệ trước khi lập phiếu."), 400
     symptoms = payload.get("symptoms")
@@ -176,7 +176,7 @@ def doctor_create_exam():
     if draft_id is not None:
         if not isinstance(draft_id, str):
             return jsonify(error="Mã bản nháp không hợp lệ."), 400
-        draft = dao.find_doctor_draft(draft_id, doctor.maNV)
+        draft = dao.timBanNhapCuaBacSi(draft_id, doctor.maNV)
         if draft is None:
             return jsonify(error="Không tìm thấy bản nháp của bác sĩ này."), 404
         if draft.maBN != patient.maBN:
@@ -214,7 +214,7 @@ def doctor_create_exam():
     clinic_timezone = timezone(timedelta(hours=7))
     exam_date = datetime.now(clinic_timezone).date()
     try:
-        exam, invoice = dao.create_exam(
+        exam, invoice = dao.lapPhieuKham(
             patient, doctor, symptoms.strip(), diagnosis.strip(), prescription_data, exam_date,
             status=status, exam=draft,
         )

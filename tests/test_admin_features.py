@@ -47,7 +47,7 @@ class AdminFeatureTests(unittest.TestCase):
         self.context.pop()
 
     def account(self, username, role):
-        return dao.create_account(dict(
+        return dao.taoTaiKhoan(dict(
             tenDangNhap=username, role=role, password=self.password, trangThai=True,
             hoTen="Kiểm thử", soDienThoai="0900000000", gioiTinh="Khác", namSinh=2000,
             diaChi="Địa chỉ kiểm thử", chuyenKhoa="Kiểm thử",
@@ -96,7 +96,7 @@ class AdminFeatureTests(unittest.TestCase):
         self.exam("draft", date(2026, 11, 2), status="NHAP", medicines=(("SAMPLE-T001", 100),))
         self.exam("outside", date(2026, 12, 1), medicines=(("SAMPLE-T001", 100),),
                   invoice=("100000", "25000", True, date(2026, 12, 1)))
-        report = dao.monthly_reports(2026, 11)
+        report = dao.thongKeHangThang(2026, 11)
         self.assertEqual(report["total"], Decimal("275000.00"))
         self.assertEqual(len(report["revenue"]), 30)
         self.assertEqual(report["revenue"][0]["amount"], Decimal("125000.00"))
@@ -113,12 +113,12 @@ class AdminFeatureTests(unittest.TestCase):
         self.assertIn("js/admin/reports.js", response.get_data(as_text=True))
 
     def test_empty_month_leap_year_and_december_boundary(self):
-        report = dao.monthly_reports(2024, 2)
+        report = dao.thongKeHangThang(2024, 2)
         self.assertEqual(len(report["revenue"]), 29)
         self.assertEqual(report["total"], 0)
         self.assertTrue(all(row["ratio"] == 0 for row in report["revenue"]))
         self.assertEqual(report["medicines"], [])
-        self.assertEqual(len(dao.monthly_reports(2026, 12)["revenue"]), 31)
+        self.assertEqual(len(dao.thongKeHangThang(2026, 12)["revenue"]), 31)
         for month in ("oops", "2026-13", "0000-01", "9999-12"):
             self.assertEqual(self.client.get("/admin/reports", query_string={"month": month}).status_code, 400)
 
@@ -190,7 +190,7 @@ class AdminFeatureTests(unittest.TestCase):
             self.assertEqual(self.post(path, {}, other).status_code, 403)
             self.assertEqual(self.client.post(path, data={}).status_code, 400)
         with self.assertLogs(app.logger, level="ERROR"), patch.object(
-            dao, "monthly_reports", side_effect=OperationalError("select", {}, Exception("test")),
+            dao, "thongKeHangThang", side_effect=OperationalError("select", {}, Exception("test")),
         ):
             self.assertEqual(self.client.get("/admin/reports").status_code, 503)
 

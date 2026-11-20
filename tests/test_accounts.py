@@ -34,7 +34,7 @@ class AccountTests(unittest.TestCase):
         db.create_all()
         self.client = app.test_client()
         self.password = "Test-password-123!"
-        self.admin = dao.create_account(self.data("admin", Role.ADMIN))
+        self.admin = dao.taoTaiKhoan(self.data("admin", Role.ADMIN))
         db.session.add_all([
             QuyDinh(
                 maQD="SO_BENH_NHAN_TOI_DA",
@@ -94,7 +94,7 @@ class AccountTests(unittest.TestCase):
         self.assertTrue(account.dangNhap("patient", self.password))
 
     def test_patient_can_register_exam_and_view_own_registration(self):
-        patient = dao.create_account(self.data("registered_patient"))
+        patient = dao.taoTaiKhoan(self.data("registered_patient"))
         self.sign_in("registered_patient")
 
         page = self.client.get("/dashboard")
@@ -134,10 +134,10 @@ class AccountTests(unittest.TestCase):
         db.session.commit()
         confirmed_html = self.client.get("/dashboard").get_data(as_text=True)
         self.assertIn(exam_date, confirmed_html)
-        self.assertEqual(len(dao.patient_exam_registrations(patient.benhNhan.maBN)), 1)
+        self.assertEqual(len(dao.layDangKyKhamCuaBenhNhan(patient.benhNhan.maBN)), 1)
 
     def test_patient_profile_page_shows_own_details_and_restricts_other_roles(self):
-        patient = dao.create_account(self.data("profile_patient"))
+        patient = dao.taoTaiKhoan(self.data("profile_patient"))
         patient.benhNhan.hoTen = "Hồ sơ bệnh nhân riêng"
         db.session.commit()
         self.sign_in("profile_patient")
@@ -157,7 +157,7 @@ class AccountTests(unittest.TestCase):
         self.assertIn('href="/patient/profile"', html)
         self.assertIn('class="nav-item active" href="/patient/profile"', html)
 
-        doctor = dao.create_account(self.data("profile_doctor", Role.DOCTOR))
+        doctor = dao.taoTaiKhoan(self.data("profile_doctor", Role.DOCTOR))
         doctor_client = app.test_client()
         self.sign_in("profile_doctor", client=doctor_client)
         denied = doctor_client.get("/patient/profile")
@@ -165,12 +165,12 @@ class AccountTests(unittest.TestCase):
         self.assertNotIn(patient.benhNhan.hoTen, denied.get_data(as_text=True))
 
     def test_patient_can_edit_contact_details_but_not_gender_or_birth_year(self):
-        patient = dao.create_account(self.data("editable_profile_patient"))
+        patient = dao.taoTaiKhoan(self.data("editable_profile_patient"))
         original = {
             "gender": patient.benhNhan.gioiTinh,
             "birth_year": patient.benhNhan.namSinh,
         }
-        registration = dao.register_patient_exam(patient.benhNhan)
+        registration = dao.dangKyKham(patient.benhNhan)
         self.sign_in("editable_profile_patient")
 
         page = self.client.get("/patient/profile").get_data(as_text=True)
@@ -207,7 +207,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(patient.benhNhan.hoTen, "Tên đã cập nhật")
 
     def test_patient_exam_registration_uses_profile_and_requires_patient(self):
-        patient = dao.create_account(self.data("registration_patient"))
+        patient = dao.taoTaiKhoan(self.data("registration_patient"))
         self.sign_in("registration_patient")
 
         response = self.post("/patient/exam-registrations", {
@@ -224,7 +224,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(registration.benhNhan.namSinh, patient.benhNhan.namSinh)
         self.assertEqual(registration.benhNhan.diaChi, patient.benhNhan.diaChi)
 
-        dao.create_account(self.data("registration_doctor", Role.DOCTOR))
+        dao.taoTaiKhoan(self.data("registration_doctor", Role.DOCTOR))
         doctor_client = app.test_client()
         self.sign_in("registration_doctor", client=doctor_client)
         forbidden = self.post("/patient/exam-registrations", {
@@ -246,7 +246,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(self.client.get("/logout").status_code, 405)
 
     def test_non_admin_cannot_read_or_write_accounts(self):
-        dao.create_account(self.data())
+        dao.taoTaiKhoan(self.data())
         self.sign_in("patient")
         self.assertEqual(self.client.get("/admin/accounts").status_code, 403)
         self.assertEqual(self.post("/admin/accounts/new", self.form("intruder")).status_code, 403)
@@ -271,7 +271,7 @@ class AccountTests(unittest.TestCase):
             page = other_client.get("/dashboard", follow_redirects=True)
             self.assertEqual(page.status_code, 200)
             page_html = page.get_data(as_text=True)
-            self.assertIn(role.label, page_html)
+            self.assertIn(role.tenVaiTro, page_html)
             for part in ('class="sidebar"', 'class="topbar"', 'class="app-footer"'):
                 self.assertIn(part, page_html)
             if role == Role.NURSE:
@@ -287,7 +287,7 @@ class AccountTests(unittest.TestCase):
                 self.assertNotIn("data-preview-control", page_html)
 
     def test_doctor_dashboard_matches_consultation_mockup_without_fake_records(self):
-        dao.create_account(self.data("doctor_ui", Role.DOCTOR))
+        dao.taoTaiKhoan(self.data("doctor_ui", Role.DOCTOR))
         self.sign_in("doctor_ui")
 
         response = self.client.get("/dashboard")
@@ -326,9 +326,44 @@ class AccountTests(unittest.TestCase):
         self.assertIn('id="exam-date"', html)
         self.assertNotIn('id="exam-date" type="date"', html)
 
+    def test_cashier_can_load_and_pay_unpaid_receipt(self):
+        doctor = dao.taoTaiKhoan(self.data("receipt_doctor", Role.DOCTOR))
+        patient = dao.taoTaiKhoan(self.data("receipt_patient"))
+        dao.taoTaiKhoan(self.data("receipt_cashier", Role.CASHIER))
+        exam = PhieuKham(
+            maPhieuKham="CASHIER-EXAM", ngayKham=date(2026, 11, 20),
+            trieuChung="Kiểm thử", benhNhan=patient.benhNhan,
+            bacSi=doctor.nhanVien.bacSi,
+        )
+        invoice = HoaDon(
+            ngayLap=datetime.now(), tienKham=100000, tienThuoc=1000,
+            tongTien=101000, phieuKham=exam, maNV=doctor.nhanVien.maNV,
+        )
+        db.session.add_all([exam, invoice])
+        db.session.commit()
+        self.sign_in("receipt_cashier")
+
+        response = self.client.get(
+            "/cashier/api/receipts", query_string={"ma_bn": patient.benhNhan.maHienThi}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["receipts"][0]["id"], invoice.maHoaDon)
+        self.client.get("/dashboard")
+        with self.client.session_transaction() as session:
+            csrf = session["csrf_token"]
+        paid = self.client.post(
+            "/cashier/api/receipts/pay", json={"id": invoice.maHoaDon},
+            headers={"X-CSRF-Token": csrf},
+        )
+        self.assertEqual(paid.status_code, 200)
+        self.assertEqual(invoice.trangThai, "DA_THANH_TOAN")
+        self.assertEqual(self.client.get(
+            "/cashier/api/receipts", query_string={"ma_bn": patient.benhNhan.maHienThi}
+        ).status_code, 404)
+
     def test_doctor_can_search_patient_medicines_history_and_create_exam(self):
-        doctor = dao.create_account(self.data("doctor_flow", Role.DOCTOR))
-        patient = dao.create_account(self.data("patient_flow", Role.PATIENT))
+        doctor = dao.taoTaiKhoan(self.data("doctor_flow", Role.DOCTOR))
+        patient = dao.taoTaiKhoan(self.data("patient_flow", Role.PATIENT))
         unit = DonViThuoc(maDonVi="UNIT", tenDonVi="Viên")
         medicine = Thuoc(
             maThuoc="MED-1", tenThuoc="Thuốc kiểm thử", donGia=1000,
@@ -433,8 +468,8 @@ class AccountTests(unittest.TestCase):
         }])
 
     def test_doctor_history_api_paginates_five_exams_and_returns_prescriptions(self):
-        doctor = dao.create_account(self.data("history_page_doctor", Role.DOCTOR))
-        patient = dao.create_account(self.data("history_page_patient", Role.PATIENT))
+        doctor = dao.taoTaiKhoan(self.data("history_page_doctor", Role.DOCTOR))
+        patient = dao.taoTaiKhoan(self.data("history_page_patient", Role.PATIENT))
         unit = DonViThuoc(maDonVi="HISTORY-UNIT", tenDonVi="Viên")
         medicine = Thuoc(
             maThuoc="HISTORY-MED", tenThuoc="Thuốc lịch sử", donGia=1000,
@@ -488,7 +523,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(invalid_page.status_code, 400)
 
     def test_doctor_medicine_catalog_paginates_and_filters_with_contains(self):
-        dao.create_account(self.data("medicine_page_doctor", Role.DOCTOR))
+        dao.taoTaiKhoan(self.data("medicine_page_doctor", Role.DOCTOR))
         unit = DonViThuoc(maDonVi="PAGE-UNIT", tenDonVi="Viên")
         medicines = [
             Thuoc(
@@ -524,9 +559,9 @@ class AccountTests(unittest.TestCase):
         )
 
     def test_doctor_can_save_resume_update_and_finalize_only_own_draft(self):
-        doctor = dao.create_account(self.data("draft_doctor", Role.DOCTOR))
-        other_doctor = dao.create_account(self.data("other_draft_doctor", Role.DOCTOR))
-        patient = dao.create_account(self.data("draft_patient", Role.PATIENT))
+        doctor = dao.taoTaiKhoan(self.data("draft_doctor", Role.DOCTOR))
+        other_doctor = dao.taoTaiKhoan(self.data("other_draft_doctor", Role.DOCTOR))
+        patient = dao.taoTaiKhoan(self.data("draft_patient", Role.PATIENT))
         unit = DonViThuoc(maDonVi="DRAFT-UNIT", tenDonVi="Viên")
         medicines = [
             Thuoc(maThuoc="DRAFT-M1", tenThuoc="Thuốc nháp một", donGia=1000,
@@ -742,7 +777,7 @@ class AccountTests(unittest.TestCase):
         self.assertIn("already exists", second.output)
 
     def test_role_changes_keep_previous_profiles(self):
-        account = dao.create_account(self.data())
+        account = dao.taoTaiKhoan(self.data())
         patient_id = account.benhNhan.maBN
         self.sign_in()
         self.post(f"/admin/accounts/{account.maTK}/edit", self.form(role="DOCTOR"))
@@ -766,7 +801,7 @@ class AccountTests(unittest.TestCase):
             self.assertTrue(self.admin.trangThai)
 
     def test_lock_and_role_change_apply_to_existing_sessions(self):
-        second = dao.create_account(self.data("second", Role.ADMIN))
+        second = dao.taoTaiKhoan(self.data("second", Role.ADMIN))
         other_client = app.test_client()
         self.sign_in("second", other_client)
         self.sign_in()
@@ -780,7 +815,7 @@ class AccountTests(unittest.TestCase):
         })
         db.session.expire_all()
         self.assertEqual(other_client.get("/dashboard").status_code, 302)
-        self.assertIsNone(dao.authenticate("second", self.password))
+        self.assertIsNone(dao.xacThucTaiKhoan("second", self.password))
 
     def test_duplicate_and_invalid_role_do_not_leave_profiles(self):
         self.post("/register", self.form())
@@ -793,7 +828,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(db.session.scalar(db.select(db.func.count()).select_from(NhanVien)), 1)
 
     def test_password_reset_and_blank_password_preserve_hash(self):
-        account = dao.create_account(self.data())
+        account = dao.taoTaiKhoan(self.data())
         other_client = app.test_client()
         self.sign_in("patient", other_client)
         original_hash = account.matKhau
@@ -805,8 +840,8 @@ class AccountTests(unittest.TestCase):
         self.post(f"/admin/accounts/{account.maTK}/edit", {
             **self.form(), "matKhau": "Replacement-123!", "xacNhanMatKhau": "Replacement-123!",
         })
-        self.assertIsNone(dao.authenticate("patient", self.password))
-        self.assertIsNotNone(dao.authenticate("patient", "Replacement-123!"))
+        self.assertIsNone(dao.xacThucTaiKhoan("patient", self.password))
+        self.assertIsNotNone(dao.xacThucTaiKhoan("patient", "Replacement-123!"))
         self.assertEqual(other_client.get("/dashboard").status_code, 302)
 
     def test_invalid_patient_or_doctor_fields_are_rejected(self):
@@ -819,7 +854,7 @@ class AccountTests(unittest.TestCase):
 
     def test_account_list_filters_and_pagination(self):
         for i in range(12):
-            dao.create_account(self.data(f"patient{i}"))
+            dao.taoTaiKhoan(self.data(f"patient{i}"))
         self.sign_in()
         first = self.client.get("/admin/accounts?role=PATIENT")
         self.assertIn("12 tài khoản", first.get_data(as_text=True))
@@ -839,12 +874,12 @@ class AccountTests(unittest.TestCase):
             db.session, "commit", side_effect=OperationalError("insert", {}, Exception("test"))
         ):
             with self.assertRaises(OperationalError):
-                dao.create_account(self.data())
+                dao.taoTaiKhoan(self.data())
         self.assertEqual(db.session.scalar(db.select(db.func.count()).select_from(TaiKhoan)), 1)
 
     def test_database_failure_returns_explicit_error_page(self):
         with self.assertLogs(app.logger, level="ERROR"), patch.object(
-            dao, "authenticate", side_effect=OperationalError("select", {}, Exception("test"))
+            dao, "xacThucTaiKhoan", side_effect=OperationalError("select", {}, Exception("test"))
         ):
             response = self.sign_in()
         self.assertEqual(response.status_code, 503)
@@ -875,7 +910,7 @@ class AccountTests(unittest.TestCase):
         self.assertIn("ChiTietDanhSachKham", inspect(db.engine).get_table_names())
 
     def test_modal_edit_validates_confirmation_and_preserves_password(self):
-        account = dao.create_account(self.data())
+        account = dao.taoTaiKhoan(self.data())
         self.sign_in()
         url = f"/admin/accounts/{account.maTK}/edit?modal=1"
         dialog = self.client.get(url).get_data(as_text=True)
@@ -903,7 +938,7 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(patient_client.get("/admin/accounts/new?modal=1").status_code, 403)
 
     def test_inline_status_is_explicit_protected_and_invalidates_sessions(self):
-        account = dao.create_account(self.data())
+        account = dao.taoTaiKhoan(self.data())
         url = f"/admin/accounts/{account.maTK}/status"
         other_client = app.test_client()
         self.sign_in("patient", other_client)
@@ -923,35 +958,35 @@ class AccountTests(unittest.TestCase):
         self.assertIn("Không được tự khóa", self.client.get("/admin/accounts").get_data(as_text=True))
 
     def test_search_matches_profile_name(self):
-        dao.create_account(self.data())
+        dao.taoTaiKhoan(self.data())
         self.sign_in()
         response = self.client.get("/admin/accounts", query_string={"q": "Người dùng"})
         self.assertIn("patient", response.get_data(as_text=True))
 
     def test_numeric_ids_and_profile_codes_expand_without_reuse(self):
-        first = dao.create_account(self.data())
+        first = dao.taoTaiKhoan(self.data())
         self.assertIsInstance(first.maTK, int)
         self.assertIsInstance(first.benhNhan.maBN, int)
         self.assertEqual(first.benhNhan.maHienThi, "BN-0001")
         first.benhNhan.maBN = 9999
         db.session.commit()
-        second = dao.create_account(self.data("next_patient"))
+        second = dao.taoTaiKhoan(self.data("next_patient"))
         self.assertEqual(second.maHoSo, "BN-10000")
         self.assertNotEqual(first.maTK, second.maTK)
         deleted_id = second.benhNhan.maBN
         db.session.delete(second.benhNhan)
         db.session.delete(second)
         db.session.commit()
-        third = dao.create_account(self.data("third_patient"))
+        third = dao.taoTaiKhoan(self.data("third_patient"))
         self.assertGreater(third.benhNhan.maBN, deleted_id)
         self.assertEqual(self.admin.maHoSo, "QT-0001")
 
     def test_employee_role_prefix_changes_but_id_stays(self):
-        account = dao.create_account(self.data("cashier", Role.CASHIER))
+        account = dao.taoTaiKhoan(self.data("cashier", Role.CASHIER))
         employee_id = account.nhanVien.maNV
         self.assertEqual(account.maHoSo, f"TN-{employee_id:04d}")
         for role, prefix in ((Role.DOCTOR, "BS"), (Role.NURSE, "YT"), (Role.ADMIN, "QT")):
-            dao.update_account(self.admin.maTK, account.maTK, self.data("cashier", role))
+            dao.capNhatTaiKhoan(self.admin.maTK, account.maTK, self.data("cashier", role))
             self.assertEqual(account.nhanVien.maNV, employee_id)
             self.assertEqual(account.maHoSo, f"{prefix}-{employee_id:04d}")
             self.assertEqual(account.nhanVien.bacSi.maNV, employee_id)

@@ -5,10 +5,10 @@ from flask_login import current_user, login_required
 
 from app import app, dao, db
 from app.models import Role
-from app.utils import roles_required
+from app.utils import yeuCauVaiTro
 
 
-def _render_patient_profile(patient, form_values=None, status: int = 200):
+def _hienThiHoSoBenhNhan(patient, form_values=None, status: int = 200):
     return render_template(
         "patient/profile.html",
         patient=patient,
@@ -16,9 +16,9 @@ def _render_patient_profile(patient, form_values=None, status: int = 200):
     ), status
 
 
-@app.route("/patient/profile", methods=["GET", "POST"])
-@roles_required(Role.PATIENT)
-def patient_profile():
+@app.route("/patient/profile", methods=["GET", "POST"], endpoint="patient_profile")
+@yeuCauVaiTro(Role.PATIENT)
+def hoSoBenhNhan():
     patient = current_user.benhNhan
     if patient is None:
         abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
@@ -36,9 +36,9 @@ def patient_profile():
 
         if error:
             flash(error, "danger")
-            return _render_patient_profile(patient, request.form, status=400)
+            return _hienThiHoSoBenhNhan(patient, request.form, status=400)
         try:
-            dao.update_patient_profile(
+            dao.capNhatHoSoBenhNhan(
                 patient.maBN,
                 name=name,
                 phone=phone,
@@ -49,39 +49,39 @@ def patient_profile():
         except ValueError as error:
             db.session.rollback()
             flash(str(error), "danger")
-            return _render_patient_profile(patient, request.form, status=409)
+            return _hienThiHoSoBenhNhan(patient, request.form, status=409)
 
         flash("Thông tin bệnh nhân đã được cập nhật.", "success")
         return redirect(url_for("patient_profile"))
-    return _render_patient_profile(patient)
+    return _hienThiHoSoBenhNhan(patient)
 
 
-def render_patient_dashboard(status: int = 200):
+def hienThiTrangBenhNhan(status: int = 200):
     patient = current_user.benhNhan
     if patient is None:
         abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
     return render_template(
         "patient/dashboard.html",
         patient=patient,
-        registrations=dao.patient_exam_registrations(patient.maBN),
+        registrations=dao.layDangKyKhamCuaBenhNhan(patient.maBN),
     ), status
 
 
-@app.post("/patient/exam-registrations")
+@app.post("/patient/exam-registrations", endpoint="patient_register_exam")
 @login_required
-@roles_required(Role.PATIENT)
-def patient_register_exam():
+@yeuCauVaiTro(Role.PATIENT)
+def benhNhanDangKyKham():
     patient = current_user.benhNhan
     if patient is None:
         abort(400, description="Tài khoản bệnh nhân chưa có hồ sơ.")
 
     try:
-        registration = dao.register_patient_exam(patient)
+        registration = dao.dangKyKham(patient)
     except ValueError as error:
         db.session.rollback()
         flash(str(error), "danger")
-        return render_patient_dashboard(status=409)
-    if registration.ngayKham > dao.clinic_today():
+        return hienThiTrangBenhNhan(status=409)
+    if registration.ngayKham > dao.ngayHienTaiPhongKham():
         flash(
             "Danh sách hôm nay đã đầy hoặc đã chốt. Hồ sơ được chuyển sang ngày gần nhất còn chỗ; ngày khám sẽ hiển thị sau khi y tá xác nhận.",
             "success",

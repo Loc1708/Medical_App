@@ -6,12 +6,12 @@ from flask_login import current_user
 
 from app import app, dao, db
 from app.models import BenhNhan, DonViThuoc, NhanVien, QuyDinh, Role, TaiKhoan, Thuoc
-from app.utils import account_data, roles_required
+from app.utils import layDuLieuTaiKhoan, yeuCauVaiTro
 
 
-@app.get("/admin/accounts")
-@roles_required(Role.ADMIN)
-def admin_accounts():
+@app.get("/admin/accounts", endpoint="admin_accounts")
+@yeuCauVaiTro(Role.ADMIN)
+def quanLyTaiKhoan():
     keyword = request.args.get("q", "").strip()[:80]
     role_filter = request.args.get("role", "")
     statement = db.select(TaiKhoan)
@@ -34,13 +34,13 @@ def admin_accounts():
     )
 
 
-@app.route("/admin/accounts/new", methods=["GET", "POST"])
-@roles_required(Role.ADMIN)
-def admin_account_create():
+@app.route("/admin/accounts/new", methods=["GET", "POST"], endpoint="admin_account_create")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriThemTaiKhoan():
     error_message = None
     if request.method == "POST":
         try:
-            dao.create_account(_validated_form())
+            dao.taoTaiKhoan(_kiemTraBieuMauTaiKhoan())
         except ValueError as error:
             db.session.rollback()
             error_message = str(error)
@@ -49,17 +49,17 @@ def admin_account_create():
             if request.args.get("modal") == "1":
                 return "", 204
             return redirect(url_for("admin_accounts"))
-    return _render_account_form(None, request.form, error_message)
+    return _hienThiBieuMauTaiKhoan(None, request.form, error_message)
 
 
-@app.route("/admin/accounts/<int:account_id>/edit", methods=["GET", "POST"])
-@roles_required(Role.ADMIN)
-def admin_account_edit(account_id: int):
+@app.route("/admin/accounts/<int:account_id>/edit", methods=["GET", "POST"], endpoint="admin_account_edit")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriSuaTaiKhoan(account_id: int):
     account = db.get_or_404(TaiKhoan, account_id)
     error_message = None
     if request.method == "POST":
         try:
-            dao.update_account(current_user.maTK, account_id, _validated_form())
+            dao.capNhatTaiKhoan(current_user.maTK, account_id, _kiemTraBieuMauTaiKhoan())
         except ValueError as error:
             db.session.rollback()
             error_message = str(error)
@@ -83,17 +83,17 @@ def admin_account_edit(account_id: int):
             "diaChi": patient.diaChi if patient else "",
             "chuyenKhoa": employee.bacSi.chuyenKhoa if employee and employee.bacSi else "",
         }
-    return _render_account_form(account, values, error_message)
+    return _hienThiBieuMauTaiKhoan(account, values, error_message)
 
 
-def _validated_form() -> dict:
-    data = account_data(request.form)
+def _kiemTraBieuMauTaiKhoan() -> dict:
+    data = layDuLieuTaiKhoan(request.form)
     if data["password"] != request.form.get("xacNhanMatKhau", ""):
         raise ValueError("Mật khẩu xác nhận không khớp.")
     return data
 
 
-def _render_account_form(account, values, error_message):
+def _hienThiBieuMauTaiKhoan(account, values, error_message):
     modal = request.args.get("modal") == "1"
     template = "components/account_dialog.html" if modal else "admin/account_form.html"
     return render_template(
@@ -101,14 +101,14 @@ def _render_account_form(account, values, error_message):
     ), 422 if modal and error_message else 200
 
 
-@app.post("/admin/accounts/<int:account_id>/status")
-@roles_required(Role.ADMIN)
-def admin_account_status(account_id: int):
+@app.post("/admin/accounts/<int:account_id>/status", endpoint="admin_account_status")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriDoiTrangThaiTaiKhoan(account_id: int):
     active = request.form.get("active")
     if active not in {"0", "1"}:
         abort(400, description="Trạng thái tài khoản không hợp lệ.")
     try:
-        dao.set_account_status(current_user.maTK, account_id, active == "1")
+        dao.capNhatTrangThaiTaiKhoan(current_user.maTK, account_id, active == "1")
     except ValueError as error:
         flash(str(error), "danger")
     else:
@@ -119,9 +119,9 @@ def admin_account_status(account_id: int):
     ))
 
 
-@app.get("/admin/medicines")
-@roles_required(Role.ADMIN)
-def admin_medicines():
+@app.get("/admin/medicines", endpoint="admin_medicines")
+@yeuCauVaiTro(Role.ADMIN)
+def quanLyThuoc():
     keyword = request.args.get("q", "").strip()[:100]
     statement = db.select(Thuoc)
     if keyword:
@@ -130,9 +130,9 @@ def admin_medicines():
     return render_template("admin/catalog.html", page=page, keyword=keyword, unit_mode=False)
 
 
-@app.get("/admin/units")
-@roles_required(Role.ADMIN)
-def admin_units():
+@app.get("/admin/units", endpoint="admin_units")
+@yeuCauVaiTro(Role.ADMIN)
+def quanLyDonViThuoc():
     keyword = request.args.get("q", "").strip()[:50]
     statement = db.select(DonViThuoc)
     if keyword:
@@ -141,14 +141,18 @@ def admin_units():
     return render_template("admin/catalog.html", page=page, keyword=keyword, unit_mode=True)
 
 
-def _catalog_editor(unit_mode: bool, code: str | None):
+def _chinhSuaDanhMuc(unit_mode: bool, code: str | None):
     model = DonViThuoc if unit_mode else Thuoc
     item = db.get_or_404(model, code) if code else None
     error_message = None
     if request.method == "POST":
         try:
-            saver = dao.save_unit if unit_mode else dao.save_medicine
-            saver(current_user.maTK, request.form, code)
+            if unit_mode:
+                dao.luuDonViThuoc(current_user.maTK, request.form, code)
+            elif code is None:
+                dao.themThuoc(current_user.maTK, request.form)
+            else:
+                dao.suaThuoc(current_user.maTK, request.form, code)
         except ValueError as error:
             db.session.rollback()
             error_message = str(error)
@@ -177,35 +181,36 @@ def _catalog_editor(unit_mode: bool, code: str | None):
     ), 422 if modal and error_message else 200
 
 
-@app.route("/admin/medicines/new", methods=["GET", "POST"])
-@app.route("/admin/medicines/<code>/edit", methods=["GET", "POST"])
-@roles_required(Role.ADMIN)
-def admin_medicine_edit(code: str | None = None):
-    return _catalog_editor(False, code)
+@app.route("/admin/medicines/new", methods=["GET", "POST"], endpoint="admin_medicine_edit")
+@app.route("/admin/medicines/<code>/edit", methods=["GET", "POST"], endpoint="admin_medicine_edit")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriChinhSuaThuoc(code: str | None = None):
+    return _chinhSuaDanhMuc(False, code)
 
 
-@app.route("/admin/units/new", methods=["GET", "POST"])
-@app.route("/admin/units/<code>/edit", methods=["GET", "POST"])
-@roles_required(Role.ADMIN)
-def admin_unit_edit(code: str | None = None):
-    return _catalog_editor(True, code)
+@app.route("/admin/units/new", methods=["GET", "POST"], endpoint="admin_unit_edit")
+@app.route("/admin/units/<code>/edit", methods=["GET", "POST"], endpoint="admin_unit_edit")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriChinhSuaDonVi(code: str | None = None):
+    return _chinhSuaDanhMuc(True, code)
 
 
-@app.post("/admin/medicines/<code>/delete")
-@roles_required(Role.ADMIN)
-def admin_medicine_delete(code: str):
-    return _delete_catalog(code, False)
+@app.post("/admin/medicines/<code>/delete", endpoint="admin_medicine_delete")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriXoaThuoc(code: str):
+    return _xoaDanhMuc(code, False)
 
 
-@app.post("/admin/units/<code>/delete")
-@roles_required(Role.ADMIN)
-def admin_unit_delete(code: str):
-    return _delete_catalog(code, True)
+@app.post("/admin/units/<code>/delete", endpoint="admin_unit_delete")
+@yeuCauVaiTro(Role.ADMIN)
+def quanTriXoaDonVi(code: str):
+    return _xoaDanhMuc(code, True)
 
 
-def _delete_catalog(code: str, unit_mode: bool):
+def _xoaDanhMuc(code: str, unit_mode: bool):
     try:
-        dao.delete_catalog_item(current_user.maTK, code, unit=unit_mode)
+        deleter = dao.xoaDonViThuoc if unit_mode else dao.xoaThuoc
+        deleter(current_user.maTK, code)
     except ValueError as error:
         db.session.rollback()
         flash(str(error), "danger")
@@ -215,13 +220,13 @@ def _delete_catalog(code: str, unit_mode: bool):
                             q=request.form.get("q", "")))
 
 
-@app.route("/admin/regulations", methods=["GET", "POST"])
-@roles_required(Role.ADMIN)
-def admin_regulations():
+@app.route("/admin/regulations", methods=["GET", "POST"], endpoint="admin_regulations")
+@yeuCauVaiTro(Role.ADMIN)
+def quanLyQuyDinh():
     error_message = None
     if request.method == "POST":
         try:
-            dao.update_regulations(current_user.maTK, request.form.get("fee", ""),
+            dao.capNhatQuyDinh(current_user.maTK, request.form.get("fee", ""),
                                    request.form.get("maximum", ""))
         except ValueError as error:
             db.session.rollback()
@@ -241,9 +246,9 @@ def admin_regulations():
                            ready=ready)
 
 
-@app.get("/admin/reports")
-@roles_required(Role.ADMIN)
-def admin_reports():
+@app.get("/admin/reports", endpoint="admin_reports")
+@yeuCauVaiTro(Role.ADMIN)
+def xemBaoCao():
     current = datetime.now(timezone(timedelta(hours=7)))
     selected_month = request.args.get("month", current.strftime("%Y-%m"))
     if not re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", selected_month):
@@ -251,7 +256,7 @@ def admin_reports():
     year, month = map(int, selected_month.split("-"))
     if not 1900 <= year <= 9998:
         abort(400, description="Năm báo cáo phải từ 1900 đến 9998.")
-    report = dao.monthly_reports(year, month)
+    report = dao.thongKeHangThang(year, month)
     chart_data = dict(
         days=[row["day"].strftime("%d/%m") for row in report["revenue"]],
         revenue=[float(row["amount"]) for row in report["revenue"]],

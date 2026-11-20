@@ -22,13 +22,13 @@ NURSE_DETAIL_REQUIRED_COLUMNS = {
 }
 
 
-def drop_nurse_exam_profile_columns(engine: Engine) -> bool:
+def xoaCotHoSoTrung(engine: Engine) -> bool:
     if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
         raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
     if "ChiTietDanhSachKham" not in inspect(engine).get_table_names():
         raise ValueError("ChiTietDanhSachKham is missing; run init-db first.")
 
-    def drop_columns(connection) -> bool:
+    def xoaCacCot(connection) -> bool:
         columns = {
             column["name"]
             for column in inspect(connection).get_columns("ChiTietDanhSachKham")
@@ -51,14 +51,14 @@ def drop_nurse_exam_profile_columns(engine: Engine) -> bool:
 
     if engine.dialect.name != "sqlite":
         with engine.begin() as connection:
-            return drop_columns(connection)
+            return xoaCacCot(connection)
 
     with engine.connect() as connection:
         connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         connection.commit()
         try:
             with connection.begin():
-                changed = drop_columns(connection)
+                changed = xoaCacCot(connection)
         finally:
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             connection.commit()
@@ -70,7 +70,7 @@ def drop_nurse_exam_profile_columns(engine: Engine) -> bool:
         return changed
 
 
-def migrate_account_ids(engine: Engine) -> bool:
+def chuyenMaTaiKhoan(engine: Engine) -> bool:
     if engine.dialect.name not in {"mysql", "sqlite"}:
         raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
     inspector = inspect(engine)
@@ -185,7 +185,7 @@ def migrate_account_ids(engine: Engine) -> bool:
     return True
 
 
-def _make_sqlite_patient_account_optional(connection) -> bool:
+def _choPhepBenhNhanKhongCoTaiKhoanSqlite(connection) -> bool:
     columns = {column["name"]: column for column in inspect(connection).get_columns("BenhNhan")}
     if "MaTK" not in columns:
         raise ValueError("Unexpected BenhNhan schema; inspect it before retrying.")
@@ -220,7 +220,7 @@ def _make_sqlite_patient_account_optional(connection) -> bool:
     return True
 
 
-def _upgrade_nurse_schema(connection, engine: Engine) -> bool:
+def _nangCapCauTrucYTa(connection, engine: Engine) -> bool:
     inspector = inspect(connection)
     tables = set(inspector.get_table_names())
     required = {"TaiKhoan", "BenhNhan", "DanhSachKham", "QuyDinh"}
@@ -249,7 +249,7 @@ def _upgrade_nurse_schema(connection, engine: Engine) -> bool:
 
     changed = False
     if engine.dialect.name == "sqlite":
-        changed |= _make_sqlite_patient_account_optional(connection)
+        changed |= _choPhepBenhNhanKhongCoTaiKhoanSqlite(connection)
     else:
         patient_columns = {
             column["name"]: column
@@ -378,19 +378,19 @@ def _upgrade_nurse_schema(connection, engine: Engine) -> bool:
     return changed
 
 
-def upgrade_nurse_queue_schema(engine: Engine) -> bool:
+def nangCapCauTrucHangCho(engine: Engine) -> bool:
     if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
         raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
     if engine.dialect.name != "sqlite":
         with engine.begin() as connection:
-            return _upgrade_nurse_schema(connection, engine)
+            return _nangCapCauTrucYTa(connection, engine)
 
     with engine.connect() as connection:
         connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
         connection.commit()
         try:
             with connection.begin():
-                changed = _upgrade_nurse_schema(connection, engine)
+                changed = _nangCapCauTrucYTa(connection, engine)
         finally:
             connection.exec_driver_sql("PRAGMA foreign_keys=ON")
             connection.commit()
@@ -400,7 +400,7 @@ def upgrade_nurse_queue_schema(engine: Engine) -> bool:
         return changed
 
 
-def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
+def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
     if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
         raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
 
@@ -445,7 +445,7 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
             "DanhSachKham does not match the legacy registration schema; inspect it first."
         )
 
-    upgrade_nurse_queue_schema(engine)
+    nangCapCauTrucHangCho(engine)
     source_metadata = MetaData()
     source_day = Table("DanhSachKham", source_metadata, autoload_with=engine)
     expected_source_columns = {
@@ -490,7 +490,7 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
         sqlite_autoincrement=True,
     )
 
-    def copy_and_swap(connection) -> None:
+    def saoChepVaThayBang(connection) -> None:
         source_rows = connection.execute(
             select(source_day).order_by(source_day.c.NgayKham, source_day.c.MaDSKham)
         ).mappings().all()
@@ -568,7 +568,7 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
             connection.commit()
             try:
                 with connection.begin():
-                    copy_and_swap(connection)
+                    saoChepVaThayBang(connection)
             finally:
                 connection.exec_driver_sql("PRAGMA foreign_keys=ON")
                 connection.commit()
@@ -579,5 +579,5 @@ def upgrade_nurse_many_to_many_schema(engine: Engine) -> bool:
                 )
     else:
         with engine.begin() as connection:
-            copy_and_swap(connection)
+            saoChepVaThayBang(connection)
     return True

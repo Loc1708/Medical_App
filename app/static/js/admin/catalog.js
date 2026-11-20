@@ -6,7 +6,7 @@
     let timer;
     let sequence = 0;
     let loading = false;
-    const showError = message => {
+    const hienThiLoi = message => {
         errorBox.textContent = message;
         errorBox.hidden = false;
         errorBox.scrollIntoView({block: "nearest"});
@@ -33,7 +33,7 @@
                 history.replaceState(null, "", url);
                 errorBox.hidden = true;
             } catch (error) {
-                if (requestId === sequence) showError(error.message);
+                if (requestId === sequence) hienThiLoi(error.message);
             }
         }, 300);
     });
@@ -56,7 +56,7 @@
             content.innerHTML = await response.text();
             bootstrap.Modal.getOrCreateInstance(modalElement).show();
         } catch (error) {
-            showError(error.message);
+            hienThiLoi(error.message);
         } finally {
             loading = false;
         }
@@ -81,7 +81,7 @@
             else throw new Error("Không lưu được dữ liệu. Kiểm tra kết quả trước khi thử lại.");
         } catch (error) {
             bootstrap.Modal.getInstance(modalElement)?.hide();
-            showError(error.message);
+            hienThiLoi(error.message);
         } finally {
             button.disabled = false;
             delete form.dataset.saving;

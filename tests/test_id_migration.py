@@ -4,7 +4,7 @@ from sqlalchemy import Column, ForeignKey, MetaData, String, Table, create_engin
 from werkzeug.security import generate_password_hash
 
 from app import db
-from app.migration import BACKUP, TABLE_NAMES, migrate_account_ids
+from app.migration import BACKUP, TABLE_NAMES, chuyenMaTaiKhoan
 from app.models import Role
 
 
@@ -53,7 +53,7 @@ class IdentifierMigrationTests(unittest.TestCase):
         self.engine.dispose()
 
     def test_preserves_data_relationships_backups_and_autoincrement(self):
-        self.assertTrue(migrate_account_ids(self.engine))
+        self.assertTrue(chuyenMaTaiKhoan(self.engine))
         metadata = MetaData()
         metadata.reflect(self.engine)
         self.assertTrue(all(name + BACKUP in metadata.tables for name in TABLE_NAMES))
@@ -80,7 +80,7 @@ class IdentifierMigrationTests(unittest.TestCase):
             ))
             self.assertGreater(result.inserted_primary_key[0], max(r["MaTK"] for r in accounts.values()))
             self.assertEqual(connection.exec_driver_sql("PRAGMA foreign_key_check").all(), [])
-        self.assertFalse(migrate_account_ids(self.engine))
+        self.assertFalse(chuyenMaTaiKhoan(self.engine))
 
     def test_refuses_unmigrated_external_references(self):
         with self.engine.begin() as connection:
@@ -89,7 +89,7 @@ class IdentifierMigrationTests(unittest.TestCase):
                 'REFERENCES "TaiKhoan" ("MaTK"))'
             )
         with self.assertRaisesRegex(ValueError, "Other tables reference"):
-            migrate_account_ids(self.engine)
+            chuyenMaTaiKhoan(self.engine)
         self.assertNotIn("TaiKhoan" + BACKUP, inspect(self.engine).get_table_names())
 
     def test_cli_requires_explicit_maintenance_confirmation(self):

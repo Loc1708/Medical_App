@@ -14,7 +14,7 @@
         <label class="form-label" for="role">Vai trò</label>
         <select class="form-select" id="role" name="role" data-role-select>
             {% for role in Role %}
-            <option value="{{ role.value }}" {% if values.get('role', 'PATIENT') == role.value %}selected{% endif %}>{{ role.label }}</option>
+            <option value="{{ role.value }}" {% if values.get('role', 'PATIENT') == role.value %}selected{% endif %}>{{ role.tenVaiTro }}</option>
             {% endfor %}
         </select>
     </div>

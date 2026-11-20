@@ -7,26 +7,26 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import app, dao, db
 from app.models import Role
-from app.utils import account_data, csrf_token, protect_csrf
+from app.utils import layDuLieuTaiKhoan, taoMaCsrf, baoVeCsrf
 
 
-app.before_request(protect_csrf)
-app.jinja_env.globals.update(csrf_token=csrf_token, Role=Role)
+app.before_request(baoVeCsrf)
+app.jinja_env.globals.update(csrf_token=taoMaCsrf, Role=Role)
 
 
-@app.route("/")
-def index():
+@app.route("/", endpoint="index")
+def trangChu():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     return render_template("index.html")
 
 
-@app.route("/login", methods=["GET", "POST"])
-def login_view():
+@app.route("/login", methods=["GET", "POST"], endpoint="login_view")
+def giaoDienDangNhap():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
-        account = dao.authenticate(
+        account = dao.xacThucTaiKhoan(
             request.form.get("tenDangNhap", ""), request.form.get("matKhau", "")
         )
         if account:
@@ -38,16 +38,16 @@ def login_view():
     return render_template("auth/login.html")
 
 
-@app.route("/register", methods=["GET", "POST"])
-def register():
+@app.route("/register", methods=["GET", "POST"], endpoint="register")
+def dangKyTaiKhoan():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
     if request.method == "POST":
         try:
-            data = account_data(request.form, registration=True)
+            data = layDuLieuTaiKhoan(request.form, registration=True)
             if data["password"] != request.form.get("xacNhanMatKhau"):
                 raise ValueError("Mật khẩu xác nhận không khớp.")
-            dao.create_account(data)
+            dao.taoTaiKhoan(data)
         except ValueError as error:
             db.session.rollback()
             flash(str(error), "danger")
@@ -57,17 +57,17 @@ def register():
     return render_template("auth/register.html")
 
 
-@app.post("/logout")
+@app.post("/logout", endpoint="logout")
 @login_required
-def logout():
+def dangXuat():
     current_user.dangXuat()
     session.clear()
     return redirect(url_for("login_view"))
 
 
-@app.get("/dashboard")
+@app.get("/dashboard", endpoint="dashboard")
 @login_required
-def dashboard():
+def trangDieuKhien():
     if current_user.role == Role.ADMIN:
         return redirect(url_for("admin_accounts"))
     if current_user.role == Role.DOCTOR:
@@ -75,13 +75,13 @@ def dashboard():
         exam_date = datetime.now(clinic_timezone).date()
         return render_template("doctor/dashboard.html", exam_date=exam_date)
     if current_user.role == Role.NURSE:
-        clinic_today = dao.clinic_today()
+        ngayHienTaiPhongKham = dao.ngayHienTaiPhongKham()
         return render_template(
             "nurse/dashboard.html",
-            exam_date=clinic_today.isoformat(),
+            exam_date=ngayHienTaiPhongKham.isoformat(),
         )
     if current_user.role == Role.PATIENT:
-        return patient_api.render_patient_dashboard()
+        return patient_api.hienThiTrangBenhNhan()
     template = {
         Role.NURSE: "nurse/dashboard.html",
         Role.CASHIER: "cashier/dashboard.html",
@@ -92,7 +92,7 @@ def dashboard():
 
 
 @app.errorhandler(SQLAlchemyError)
-def database_error(_error):
+def xuLyLoiCoSoDuLieu(_error):
     db.session.rollback()
     app.logger.exception("Database request failed.")
     return render_template(
@@ -104,7 +104,7 @@ def database_error(_error):
 @app.errorhandler(400)
 @app.errorhandler(403)
 @app.errorhandler(404)
-def http_error(error):
+def xuLyLoiHttp(error):
     messages = {
         400: error.description,
         403: "Bạn không có quyền truy cập chức năng này.",

@@ -19,7 +19,7 @@ class Role(str, Enum):
     ADMIN = "ADMIN"
 
     @property
-    def label(self) -> str:
+    def tenVaiTro(self) -> str:
         return {
             "PATIENT": "Bệnh nhân", "NURSE": "Y tá", "CASHIER": "Thu ngân",
             "DOCTOR": "Bác sĩ", "ADMIN": "Quản trị",
@@ -63,7 +63,7 @@ class TaiKhoan(db.Model):
         profile = self.benhNhan if self.role == Role.PATIENT else self.nhanVien
         return profile.hoTen if profile else self.tenDangNhap
 
-    def set_password(self, password: str) -> None:
+    def datMatKhau(self, password: str) -> None:
         self.matKhau = generate_password_hash(password)
 
     def dangNhap(self, tenDangNhap: str, matKhau: str) -> bool:
@@ -84,7 +84,7 @@ class TaiKhoan(db.Model):
         # Authorization and password policy are enforced by the calling DAO.
         if self.tenDangNhap != tenDangNhap.strip().lower():
             raise ValueError("Tên đăng nhập không khớp tài khoản.")
-        self.set_password(matKhau)
+        self.datMatKhau(matKhau)
         return True
 
 

@@ -14,7 +14,7 @@ from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
     DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
 )
-from app.utils import validate_password
+from app.utils import kiemTraMatKhau
 
 
 ACTIVE_EXAM_STATUSES = ("CHO_KHAM", "DA_MO_LAI", "DA_XAC_NHAN")
@@ -33,7 +33,7 @@ class PastExamDate(ValueError):
     pass
 
 
-def authenticate(username: str, password: str):
+def xacThucTaiKhoan(username: str, password: str):
     if len(username) > 80 or not 1 <= len(password) <= 128:
         return None
     account = db.session.scalar(
@@ -42,14 +42,14 @@ def authenticate(username: str, password: str):
     return account if account and account.dangNhap(username, password) else None
 
 
-def find_patient_by_code(code: str) -> BenhNhan | None:
+def timKiemBenhNhanTheoId(code: str) -> BenhNhan | None:
     match = re.fullmatch(r"(?:BN-)?(\d{1,10})", code.strip(), re.IGNORECASE)
     if not match:
         return None
     return db.session.get(BenhNhan, int(match.group(1)))
 
 
-def search_patients_by_code(keyword: str, *, limit: int = 10) -> list[BenhNhan]:
+def timBenhNhanTheoMa(keyword: str, *, limit: int = 10) -> list[BenhNhan]:
     query = keyword.strip().upper()
     if query in {"B", "BN", "BN-"}:
         digits = ""
@@ -83,7 +83,7 @@ def search_patients_by_code(keyword: str, *, limit: int = 10) -> list[BenhNhan]:
     return list(db.session.scalars(statement.limit(limit)))
 
 #Cashier
-def find_unpaid_receipts(ma_bn=None):
+def layHoaDonChuaThanhToan(ma_bn=None):
     res = (db.session.query(HoaDon)
            .join(PhieuKham, HoaDon.maPhieuKham == PhieuKham.maPhieuKham)
            .join(BenhNhan, PhieuKham.maBN == BenhNhan.maBN)
@@ -94,7 +94,7 @@ def find_unpaid_receipts(ma_bn=None):
     return res.all()
     
 
-def cashier_search_patients(kw=None):
+def thuNganTimBenhNhan(kw=None):
     if not kw or not kw.strip():
         return []
 
@@ -107,7 +107,7 @@ def cashier_search_patients(kw=None):
 
     return BenhNhan.query.filter(or_(*dieu_kien)).limit(10).all()
 
-def pay_receipt(ma_hd):
+def thanhToan(ma_hd):
     hd = HoaDon.query.get(ma_hd)
     if hd is None or hd.trangThai != 'CHUA_THANH_TOAN':
         return None
@@ -116,7 +116,7 @@ def pay_receipt(ma_hd):
     db.session.commit()              # luu xuong database
     return hd
 
-def search_medicines(
+def timKiemThuoc(
     keyword: str = "",
     *,
     page: int = 1,
@@ -144,7 +144,7 @@ def search_medicines(
     )), total
 
 
-def patient_exam_history(
+def layDanhSachLichSuKham(
     patient_id: int,
     *,
     page: int = 1,
@@ -171,7 +171,7 @@ def patient_exam_history(
     return exams, total
 
 
-def patient_exam_registrations(patient_id: int) -> list[ChiTietDanhSachKham]:
+def layDangKyKhamCuaBenhNhan(patient_id: int) -> list[ChiTietDanhSachKham]:
     return list(db.session.scalars(
         db.select(ChiTietDanhSachKham)
         .options(joinedload(ChiTietDanhSachKham.benhNhan))
@@ -183,7 +183,7 @@ def patient_exam_registrations(patient_id: int) -> list[ChiTietDanhSachKham]:
     ))
 
 
-def daily_patient_limit(*, lock: bool = False) -> int:
+def layGioiHanBenhNhanNgay(*, lock: bool = False) -> int:
     statement = db.select(QuyDinh).where(QuyDinh.maQD == "SO_BENH_NHAN_TOI_DA")
     if lock:
         statement = statement.with_for_update()
@@ -193,12 +193,12 @@ def daily_patient_limit(*, lock: bool = False) -> int:
     return rule.laySoBenhNhanToiDa()
 
 
-def clinic_today() -> date:
+def ngayHienTaiPhongKham() -> date:
     return datetime.now(timezone(timedelta(hours=7))).date()
 
 
-def _next_daily_slot(exam_date: date) -> int | None:
-    limit = daily_patient_limit(lock=True)
+def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
+    limit = layGioiHanBenhNhanNgay(lock=True)
     used_slots = set(db.session.scalars(
         db.select(ChiTietDanhSachKham.soThuTu).where(
             ChiTietDanhSachKham.ngayKham == exam_date,
@@ -211,7 +211,7 @@ def _next_daily_slot(exam_date: date) -> int | None:
     return next((slot for slot in range(1, limit + 1) if slot not in used_slots), None)
 
 
-def _ensure_exam_day_is_open(exam_date: date) -> None:
+def _kiemTraNgayKhamChuaChot(exam_date: date) -> None:
     confirmed_registration = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham)
         .where(
@@ -228,7 +228,7 @@ def _ensure_exam_day_is_open(exam_date: date) -> None:
         )
 
 
-def nurse_exam_list(
+def layDanhSachKham(
     exam_date: date,
 ) -> tuple[list[ChiTietDanhSachKham], list[ChiTietDanhSachKham]]:
     active = list(db.session.scalars(
@@ -253,7 +253,7 @@ def nurse_exam_list(
     return active, waiting
 
 
-def nurse_confirmed_exam_history() -> list[dict]:
+def layLichSuDanhSachDaChot() -> list[dict]:
     rows = db.session.execute(
         db.select(
             ChiTietDanhSachKham,
@@ -286,7 +286,7 @@ def nurse_confirmed_exam_history() -> list[dict]:
     return list(history.values())
 
 
-def update_patient_profile(
+def capNhatHoSoBenhNhan(
     patient_id: int,
     *,
     name: str,
@@ -313,7 +313,7 @@ def update_patient_profile(
         raise
 
 
-def _commit_exam_list_change() -> None:
+def _luuThayDoiDanhSachKham() -> None:
     try:
         db.session.commit()
     except IntegrityError:
@@ -326,7 +326,7 @@ def _commit_exam_list_change() -> None:
         raise
 
 
-def _get_or_create_exam_day(exam_date: date, nurse_id: int | None = None) -> DanhSachKham:
+def _layHoacTaoDanhSachNgay(exam_date: date, nurse_id: int | None = None) -> DanhSachKham:
     exam_day = db.session.scalar(
         db.select(DanhSachKham)
         .where(DanhSachKham.ngayKham == exam_date)
@@ -340,14 +340,14 @@ def _get_or_create_exam_day(exam_date: date, nurse_id: int | None = None) -> Dan
     return exam_day
 
 
-def _find_next_available_exam_date(exam_date: date) -> tuple[date, int]:
+def _timNgayKhamConChoGanNhat(exam_date: date) -> tuple[date, int]:
     while True:
         try:
-            _ensure_exam_day_is_open(exam_date)
+            _kiemTraNgayKhamChuaChot(exam_date)
         except ConfirmedExamDay:
             pass
         else:
-            slot = _next_daily_slot(exam_date)
+            slot = _timSoThuTuTrongNgay(exam_date)
             if slot is not None:
                 return exam_date, slot
         if exam_date == date.max:
@@ -355,12 +355,12 @@ def _find_next_available_exam_date(exam_date: date) -> tuple[date, int]:
         exam_date += timedelta(days=1)
 
 
-def register_patient_exam(
+def dangKyKham(
     patient: BenhNhan,
     exam_date: date | None = None,
 ) -> ChiTietDanhSachKham:
-    exam_date = exam_date or clinic_today()
-    daily_patient_limit(lock=True)
+    exam_date = exam_date or ngayHienTaiPhongKham()
+    layGioiHanBenhNhanNgay(lock=True)
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham).where(
             ChiTietDanhSachKham.maBN == patient.maBN,
@@ -371,9 +371,9 @@ def register_patient_exam(
     if duplicate is not None:
         raise ValueError("Bạn đã có lượt đăng ký khám từ hôm nay trở đi.")
 
-    exam_date, slot = _find_next_available_exam_date(exam_date)
+    exam_date, slot = _timNgayKhamConChoGanNhat(exam_date)
     registration = ChiTietDanhSachKham(
-        danhSachKham=_get_or_create_exam_day(exam_date),
+        danhSachKham=_layHoacTaoDanhSachNgay(exam_date),
         benhNhan=patient,
         ngayKham=exam_date,
         soThuTu=slot,
@@ -381,12 +381,12 @@ def register_patient_exam(
         trangThai="CHO_KHAM",
     )
     db.session.add(registration)
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
     return registration
 
 
-def migrate_waiting_registrations() -> int:
-    daily_patient_limit(lock=True)
+def chuyenDangKyChoCu() -> int:
+    layGioiHanBenhNhanNgay(lock=True)
     waiting = list(db.session.scalars(
         db.select(ChiTietDanhSachKham)
         .where(ChiTietDanhSachKham.trangThai == "CHO_DUYET")
@@ -394,9 +394,9 @@ def migrate_waiting_registrations() -> int:
         .with_for_update()
     ))
     for registration in waiting:
-        candidate = max(clinic_today(), registration.ngayKham)
+        candidate = max(ngayHienTaiPhongKham(), registration.ngayKham)
         while True:
-            candidate, slot = _find_next_available_exam_date(candidate)
+            candidate, slot = _timNgayKhamConChoGanNhat(candidate)
             duplicate = db.session.scalar(
                 db.select(ChiTietDanhSachKham.maCTDSKham).where(
                     ChiTietDanhSachKham.maBN == registration.maBN,
@@ -409,24 +409,24 @@ def migrate_waiting_registrations() -> int:
             if candidate == date.max:
                 raise ValueError("Không tìm được ngày khám còn chỗ.")
             candidate += timedelta(days=1)
-        registration.danhSachKham = _get_or_create_exam_day(candidate)
+        registration.danhSachKham = _layHoacTaoDanhSachNgay(candidate)
         registration.ngayKham = candidate
         registration.soThuTu = slot
         registration.trangThai = "CHO_KHAM"
         db.session.flush()
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
     return len(waiting)
 
 
-def create_nurse_exam(
+def themBenhNhan(
     *,
     exam_date: date,
     patient: BenhNhan,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
-    daily_patient_limit(lock=True)
-    _ensure_exam_day_is_open(exam_date)
-    slot = _next_daily_slot(exam_date)
+    layGioiHanBenhNhanNgay(lock=True)
+    _kiemTraNgayKhamChuaChot(exam_date)
+    slot = _timSoThuTuTrongNgay(exam_date)
     if slot is None:
         raise DailyCapacityReached(
             f"Danh sách ngày {exam_date.strftime('%d/%m/%Y')} đã đủ chỗ. "
@@ -444,7 +444,7 @@ def create_nurse_exam(
         raise ValueError("Bệnh nhân này đã có trong danh sách ngày đang chọn.")
 
     registration = ChiTietDanhSachKham(
-        danhSachKham=_get_or_create_exam_day(exam_date, nurse_id),
+        danhSachKham=_layHoacTaoDanhSachNgay(exam_date, nurse_id),
         benhNhan=patient,
         ngayKham=exam_date,
         soThuTu=slot,
@@ -452,11 +452,11 @@ def create_nurse_exam(
         trangThai="CHO_KHAM",
     )
     db.session.add(registration)
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
     return registration
 
 
-def update_nurse_exam(
+def capNhatLuotKham(
     registration_id: int,
     *,
     name: str,
@@ -494,12 +494,12 @@ def update_nurse_exam(
     registration.benhNhan.namSinh = birth_year
     registration.benhNhan.diaChi = address
     registration.benhNhan.soDienThoai = phone
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
     return registration
 
 
-def cancel_nurse_exam(registration_id: int) -> None:
-    daily_patient_limit(lock=True)
+def huyLuotKham(registration_id: int) -> None:
+    layGioiHanBenhNhanNgay(lock=True)
     registration = db.session.scalar(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.maCTDSKham == registration_id,
@@ -510,16 +510,16 @@ def cancel_nurse_exam(registration_id: int) -> None:
         raise LookupError("Không tìm thấy lượt khám đang hoạt động.")
     registration.trangThai = "DA_HUY"
     registration.soThuTu = None
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
 
 
-def approve_waiting_nurse_exam(
+def duyetLuotChoCu(
     registration_id: int,
     target_date: date,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
-    daily_patient_limit(lock=True)
-    if target_date < clinic_today():
+    layGioiHanBenhNhanNgay(lock=True)
+    if target_date < ngayHienTaiPhongKham():
         raise PastExamDate("Không thể duyệt bệnh nhân vào ngày đã qua.")
 
     registration = db.session.scalar(
@@ -531,7 +531,7 @@ def approve_waiting_nurse_exam(
     if registration is None:
         raise LookupError("Không tìm thấy lượt khám đang chờ duyệt.")
 
-    _ensure_exam_day_is_open(target_date)
+    _kiemTraNgayKhamChuaChot(target_date)
 
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham).where(
@@ -544,24 +544,24 @@ def approve_waiting_nurse_exam(
     if duplicate is not None:
         raise ValueError("Bệnh nhân đã có lượt đăng ký trong ngày được chọn.")
 
-    slot = _next_daily_slot(target_date)
+    slot = _timSoThuTuTrongNgay(target_date)
     if slot is None:
-        limit = daily_patient_limit()
+        limit = layGioiHanBenhNhanNgay()
         raise DailyCapacityReached(
             f"Danh sách ngày {target_date.strftime('%d/%m/%Y')} đã đủ {limit} bệnh nhân."
         )
-    registration.danhSachKham = _get_or_create_exam_day(target_date, nurse_id)
+    registration.danhSachKham = _layHoacTaoDanhSachNgay(target_date, nurse_id)
     registration.ngayKham = target_date
     registration.soThuTu = slot
     registration.trangThai = "CHO_KHAM"
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
     return registration
 
 
-def confirm_nurse_exam_day(
+def xacNhanDanhSach(
     exam_date: date, nurse_id: int | None = None,
 ) -> list[ChiTietDanhSachKham]:
-    daily_patient_limit(lock=True)
+    layGioiHanBenhNhanNgay(lock=True)
     registrations = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.ngayKham == exam_date,
@@ -577,19 +577,19 @@ def confirm_nurse_exam_day(
         ) is not None:
             return []
         raise ValueError("Không có bệnh nhân nào trong danh sách để xác nhận.")
-    _get_or_create_exam_day(exam_date, nurse_id)
+    _layHoacTaoDanhSachNgay(exam_date, nurse_id)
     for registration in registrations:
         registration.trangThai = "DA_XAC_NHAN"
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
 
     return registrations
 
 
-def reopen_nurse_exam_day(exam_date: date) -> int:
-    if exam_date < clinic_today():
+def moLaiDanhSachKham(exam_date: date) -> int:
+    if exam_date < ngayHienTaiPhongKham():
         raise ValueError("Không thể mở lại danh sách của ngày đã qua.")
 
-    daily_patient_limit(lock=True)
+    layGioiHanBenhNhanNgay(lock=True)
     registrations = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.ngayKham == exam_date,
@@ -601,11 +601,11 @@ def reopen_nurse_exam_day(exam_date: date) -> int:
 
     for registration in registrations:
         registration.trangThai = "DA_MO_LAI"
-    _commit_exam_list_change()
+    _luuThayDoiDanhSachKham()
     return len(registrations)
 
 
-def find_doctor_draft(exam_id: str, doctor_id: int) -> PhieuKham | None:
+def timBanNhapCuaBacSi(exam_id: str, doctor_id: int) -> PhieuKham | None:
     return db.session.scalar(
         db.select(PhieuKham).where(
             PhieuKham.maPhieuKham == exam_id,
@@ -615,7 +615,7 @@ def find_doctor_draft(exam_id: str, doctor_id: int) -> PhieuKham | None:
     )
 
 
-def doctor_drafts(doctor_id: int) -> list[PhieuKham]:
+def layBanNhapCuaBacSi(doctor_id: int) -> list[PhieuKham]:
     return list(db.session.scalars(
         db.select(PhieuKham)
         .where(
@@ -626,8 +626,8 @@ def doctor_drafts(doctor_id: int) -> list[PhieuKham]:
     ))
 
 
-def delete_doctor_draft(exam_id: str, doctor_id: int) -> bool:
-    draft = find_doctor_draft(exam_id, doctor_id)
+def xoaBanNhapCuaBacSi(exam_id: str, doctor_id: int) -> bool:
+    draft = timBanNhapCuaBacSi(exam_id, doctor_id)
     if draft is None:
         return False
     try:
@@ -642,7 +642,7 @@ def delete_doctor_draft(exam_id: str, doctor_id: int) -> bool:
     return True
 
 
-def _create_exam_invoice(
+def _taoHoaDonPhieuKham(
     exam: PhieuKham,
     doctor: BacSi,
     prescriptions: list[dict],
@@ -671,7 +671,7 @@ def _create_exam_invoice(
     return invoice
 
 
-def create_exam(
+def lapPhieuKham(
     patient: BenhNhan,
     doctor: BacSi,
     symptoms: str,
@@ -761,7 +761,7 @@ def create_exam(
             cachDung=prescription["instructions"],
         ))
     if status == "DA_LAP":
-        invoice = _create_exam_invoice(exam, doctor, prescriptions)
+        invoice = _taoHoaDonPhieuKham(exam, doctor, prescriptions)
     try:
         db.session.commit()
     except IntegrityError:
@@ -775,7 +775,7 @@ def create_exam(
     return exam, invoice
 
 
-def _update_profile(account: TaiKhoan, data: dict) -> None:
+def _capNhatHoSoTaiKhoan(account: TaiKhoan, data: dict) -> None:
     if data["role"] == Role.PATIENT:
         if account.benhNhan is None:
             account.benhNhan = BenhNhan()
@@ -795,20 +795,20 @@ def _update_profile(account: TaiKhoan, data: dict) -> None:
     profile.soDienThoai = data["soDienThoai"]
 
 
-def create_account(data: dict) -> TaiKhoan:
-    validate_password(data["password"])
+def taoTaiKhoan(data: dict) -> TaiKhoan:
+    kiemTraMatKhau(data["password"])
     account = TaiKhoan()
     account.tenDangNhap = data["tenDangNhap"]
     account.role = data["role"]
     account.trangThai = data["trangThai"]
-    account.set_password(data["password"])
-    _update_profile(account, data)
+    account.datMatKhau(data["password"])
+    _capNhatHoSoTaiKhoan(account, data)
     db.session.add(account)
-    _commit()
+    _luuThayDoi()
     return account
 
 
-def _lock_managed_account(actor_id: int, target_id: int) -> TaiKhoan:
+def _khoaTaiKhoanDangQuanLy(actor_id: int, target_id: int) -> TaiKhoan:
     # Lock both accounts so concurrent admins cannot disable one another's last access.
     locked = list(db.session.scalars(
         db.select(TaiKhoan).where(TaiKhoan.maTK.in_([actor_id, target_id]))
@@ -826,32 +826,32 @@ def _lock_managed_account(actor_id: int, target_id: int) -> TaiKhoan:
     return target
 
 
-def update_account(actor_id: int, target_id: int, data: dict) -> TaiKhoan:
-    target = _lock_managed_account(actor_id, target_id)
+def capNhatTaiKhoan(actor_id: int, target_id: int, data: dict) -> TaiKhoan:
+    target = _khoaTaiKhoanDangQuanLy(actor_id, target_id)
     if actor_id == target_id and (data["role"] != Role.ADMIN or not data["trangThai"]):
         db.session.rollback()
         raise ValueError("Không được tự khóa hoặc tự bỏ quyền quản trị của mình.")
     if data["password"]:
-        validate_password(data["password"])
+        kiemTraMatKhau(data["password"])
         target.doiMatKhau(target.tenDangNhap, data["password"])
     target.tenDangNhap = data["tenDangNhap"]
     target.role = data["role"]
     target.trangThai = data["trangThai"]
-    _update_profile(target, data)
-    _commit()
+    _capNhatHoSoTaiKhoan(target, data)
+    _luuThayDoi()
     return target
 
 
-def set_account_status(actor_id: int, target_id: int, active: bool) -> None:
-    target = _lock_managed_account(actor_id, target_id)
+def capNhatTrangThaiTaiKhoan(actor_id: int, target_id: int, active: bool) -> None:
+    target = _khoaTaiKhoanDangQuanLy(actor_id, target_id)
     if actor_id == target_id and not active:
         db.session.rollback()
         raise ValueError("Không được tự khóa tài khoản quản trị của mình.")
     target.trangThai = active
-    _commit()
+    _luuThayDoi()
 
 
-def _commit() -> None:
+def _luuThayDoi() -> None:
     try:
         db.session.commit()
     except IntegrityError:
@@ -864,7 +864,7 @@ def _commit() -> None:
         raise
 
 
-def _lock_admin(actor_id: int) -> None:
+def _khoaQuanTriVien(actor_id: int) -> None:
     actor = db.session.scalar(db.select(TaiKhoan).where(
         TaiKhoan.maTK == actor_id,
     ).with_for_update().execution_options(populate_existing=True))
@@ -872,7 +872,7 @@ def _lock_admin(actor_id: int) -> None:
         raise ValueError("Bạn không còn quyền quản trị.")
 
 
-def _catalog_commit() -> None:
+def _luuDanhMuc() -> None:
     try:
         db.session.commit()
     except IntegrityError:
@@ -885,7 +885,7 @@ def _catalog_commit() -> None:
         raise
 
 
-def parse_amount(value: str, *, positive: bool = False) -> Decimal:
+def chuyenSoTien(value: str, *, positive: bool = False) -> Decimal:
     try:
         amount = Decimal(value.strip())
     except InvalidOperation:
@@ -899,19 +899,19 @@ def parse_amount(value: str, *, positive: bool = False) -> Decimal:
     return amount
 
 
-def _catalog_code(value: str) -> str:
+def _kiemTraMaDanhMuc(value: str) -> str:
     code = value.strip().upper()
     if not re.fullmatch(r"[A-Z0-9_-]{1,20}", code):
         raise ValueError("Mã gồm 1–20 chữ không dấu, số, gạch ngang hoặc gạch dưới.")
     return code
 
 
-def save_medicine(actor_id: int, form, code: str | None = None) -> Thuoc:
-    _lock_admin(actor_id)
+def _luuThuoc(actor_id: int, form, code: str | None = None) -> Thuoc:
+    _khoaQuanTriVien(actor_id)
     name = form.get("tenThuoc", "").strip()
     if not name or len(name) > 100:
         raise ValueError("Tên thuốc bắt buộc, tối đa 100 ký tự.")
-    amount = parse_amount(form.get("donGia", ""))
+    amount = chuyenSoTien(form.get("donGia", ""))
     stock = form.get("soLuongTon", "").strip()
     if not re.fullmatch(r"[0-9]{1,9}", stock):
         raise ValueError("Số lượng phải là số nguyên từ 0 đến 999999999.")
@@ -922,7 +922,7 @@ def save_medicine(actor_id: int, form, code: str | None = None) -> Thuoc:
         raise ValueError("Đơn vị thuốc không tồn tại. Hãy chọn lại.")
     if code is None:
         medicine = Thuoc()
-        medicine.maThuoc = _catalog_code(form.get("maThuoc", ""))
+        medicine.maThuoc = _kiemTraMaDanhMuc(form.get("maThuoc", ""))
         db.session.add(medicine)
     else:
         medicine = db.session.scalar(db.select(Thuoc).where(
@@ -934,18 +934,26 @@ def save_medicine(actor_id: int, form, code: str | None = None) -> Thuoc:
     medicine.donGia = float(amount)
     medicine.soLuongTon = int(stock)
     medicine.donVi = unit
-    _catalog_commit()
+    _luuDanhMuc()
     return medicine
 
 
-def save_unit(actor_id: int, form, code: str | None = None) -> DonViThuoc:
-    _lock_admin(actor_id)
+def themThuoc(actor_id: int, form) -> Thuoc:
+    return _luuThuoc(actor_id, form)
+
+
+def suaThuoc(actor_id: int, form, code: str) -> Thuoc:
+    return _luuThuoc(actor_id, form, code)
+
+
+def luuDonViThuoc(actor_id: int, form, code: str | None = None) -> DonViThuoc:
+    _khoaQuanTriVien(actor_id)
     name = form.get("tenDonVi", "").strip()
     if not name or len(name) > 50:
         raise ValueError("Tên đơn vị bắt buộc, tối đa 50 ký tự.")
     if code is None:
         unit = DonViThuoc()
-        unit.maDonVi = _catalog_code(form.get("maDonVi", ""))
+        unit.maDonVi = _kiemTraMaDanhMuc(form.get("maDonVi", ""))
         db.session.add(unit)
     else:
         unit = db.session.scalar(db.select(DonViThuoc).where(
@@ -954,12 +962,12 @@ def save_unit(actor_id: int, form, code: str | None = None) -> DonViThuoc:
         if unit is None:
             raise ValueError("Đơn vị không còn tồn tại.")
     unit.tenDonVi = name
-    _catalog_commit()
+    _luuDanhMuc()
     return unit
 
 
-def delete_catalog_item(actor_id: int, code: str, *, unit: bool = False) -> None:
-    _lock_admin(actor_id)
+def _xoaMucDanhMuc(actor_id: int, code: str, *, unit: bool = False) -> None:
+    _khoaQuanTriVien(actor_id)
     model = DonViThuoc if unit else Thuoc
     key = DonViThuoc.maDonVi if unit else Thuoc.maThuoc
     item = db.session.scalar(db.select(model).where(key == code).with_for_update())
@@ -971,12 +979,20 @@ def delete_catalog_item(actor_id: int, code: str, *, unit: bool = False) -> None
     if db.session.scalar(references.limit(1)) is not None:
         raise ValueError("Không thể xóa: dữ liệu đang được sử dụng trong thuốc hoặc đơn thuốc.")
     db.session.delete(item)
-    _catalog_commit()
+    _luuDanhMuc()
 
 
-def update_regulations(actor_id: int, fee: str, maximum: str) -> None:
-    _lock_admin(actor_id)
-    amount = parse_amount(fee, positive=True)
+def xoaThuoc(actor_id: int, code: str) -> None:
+    _xoaMucDanhMuc(actor_id, code)
+
+
+def xoaDonViThuoc(actor_id: int, code: str) -> None:
+    _xoaMucDanhMuc(actor_id, code, unit=True)
+
+
+def capNhatQuyDinh(actor_id: int, fee: str, maximum: str) -> None:
+    _khoaQuanTriVien(actor_id)
+    amount = chuyenSoTien(fee, positive=True)
     if not re.fullmatch(r"[0-9]{1,6}", maximum.strip()):
         raise ValueError("Số bệnh nhân tối đa phải là số nguyên từ 1 đến 100000.")
     rules = {rule.maQD: rule for rule in db.session.scalars(
@@ -986,10 +1002,10 @@ def update_regulations(actor_id: int, fee: str, maximum: str) -> None:
         raise ValueError("Chưa khởi tạo quy định. Hãy chạy seed-admin-demo trước.")
     rules["TIEN_KHAM"].capNhatTienKham(amount)
     rules["SO_BENH_NHAN_TOI_DA"].capNhatQuyDinhKham(int(maximum))
-    _catalog_commit()
+    _luuDanhMuc()
 
 
-def monthly_reports(year: int, month: int) -> dict:
+def thongKeHangThang(year: int, month: int) -> dict:
     start = date(year, month, 1)
     days = calendar.monthrange(year, month)[1]
     end = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)

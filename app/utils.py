@@ -12,13 +12,13 @@ from app.models import Role
 
 ESMS_URL = "https://rest.esms.vn/MainService.svc/json/SendMultipleMessage_V4_post_json/"
 
-def csrf_token() -> str:
+def taoMaCsrf() -> str:
     if "csrf_token" not in session:
         session["csrf_token"] = secrets.token_urlsafe(32)
     return session["csrf_token"]
 
 
-def protect_csrf() -> None:
+def baoVeCsrf() -> None:
     if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
         supplied = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
@@ -28,26 +28,26 @@ def protect_csrf() -> None:
             abort(400, description="Phiên biểu mẫu không hợp lệ. Hãy tải lại trang và thử lại.")
 
 
-def roles_required(*roles: Role):
-    def decorate(function):
+def yeuCauVaiTro(*roles: Role):
+    def trangTriTheoVaiTro(function):
         @wraps(function)
-        def guarded(*args, **kwargs):
+        def kiemTraVaiTro(*args, **kwargs):
             if not current_user.is_authenticated:
                 from app import login
                 return login.unauthorized()
             if current_user.role not in roles:
                 abort(403)
             return function(*args, **kwargs)
-        return guarded
-    return decorate
+        return kiemTraVaiTro
+    return trangTriTheoVaiTro
 
 
-def validate_password(password: str) -> None:
+def kiemTraMatKhau(password: str) -> None:
     if not 10 <= len(password) <= 128:
         raise ValueError("Mật khẩu phải có từ 10 đến 128 ký tự.")
 
 
-def account_data(form, *, registration: bool = False) -> dict:
+def layDuLieuTaiKhoan(form, *, registration: bool = False) -> dict:
     username = form.get("tenDangNhap", "").strip().lower()
     if not re.fullmatch(r"[a-z0-9_.-]{3,80}", username):
         raise ValueError("Tên đăng nhập gồm 3–80 chữ không dấu, số hoặc ký tự _ . -")
@@ -87,7 +87,7 @@ def account_data(form, *, registration: bool = False) -> dict:
         data["chuyenKhoa"] = specialty
     return data
 
-def send_sms(phone, content):
+def guiTinNhanSms(phone, content):
     mode = os.getenv("SMS_MODE", "mock")
     if mode == "mock":
         print(f"[MOCK SMS] {phone}: {content}")

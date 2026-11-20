@@ -70,13 +70,13 @@ login = LoginManager(app)
 
 
 @login.unauthorized_handler
-def unauthorized():
+def xuLyChuaDangNhap():
     flash("Vui lòng đăng nhập để tiếp tục.", "info")
     return redirect(url_for("login_view"))
 
 
 @login.user_loader
-def load_user(account_id: str):
+def taiNguoiDung(account_id: str):
     from app.models import TaiKhoan
     if not account_id.isascii() or not account_id.isdecimal() or len(account_id) > 10:
         return None
@@ -88,7 +88,7 @@ def load_user(account_id: str):
 
 
 @app.cli.command("check-db")
-def check_db() -> None:
+def kiemTraCoSoDuLieu() -> None:
     """Verify connectivity without creating tables or modifying data."""
     with db.engine.connect() as connection:
         connection.execute(text("SELECT 1")).scalar_one()
@@ -96,7 +96,7 @@ def check_db() -> None:
 
 
 @app.cli.command("init-db")
-def init_db() -> None:
+def khoiTaoCoSoDuLieu() -> None:
     """Create tables missing from the current models; never alter existing schema."""
     from app import models
     from sqlalchemy import inspect
@@ -124,7 +124,7 @@ def init_db() -> None:
 
 
 @app.cli.command("create-patient-registration-table")
-def create_patient_registration_table() -> None:
+def taoBangDangKyKham() -> None:
     """Create the daily exam list and patient-association tables if missing."""
     from sqlalchemy import inspect
     from app.models import ChiTietDanhSachKham, DanhSachKham
@@ -157,7 +157,7 @@ def create_patient_registration_table() -> None:
 
 
 @app.cli.command("upgrade-clinical-schema")
-def upgrade_clinical_schema() -> None:
+def nangCapCauTrucPhieuKham() -> None:
     """Add clinical status and diagnosis columns without changing existing exam rows."""
     from sqlalchemy import inspect
 
@@ -193,9 +193,9 @@ def upgrade_clinical_schema() -> None:
 
 
 @app.cli.command("upgrade-nurse-queue-schema")
-def upgrade_nurse_queue_schema() -> None:
+def nangCapCauTrucHangCho() -> None:
     """Prepare patient profiles and daily registration rows for the nurse queue."""
-    from app.migration import upgrade_nurse_queue_schema as upgrade_schema
+    from app.migration import nangCapCauTrucHangCho as upgrade_schema
 
     try:
         changed = upgrade_schema(db.engine)
@@ -215,9 +215,9 @@ def upgrade_nurse_queue_schema() -> None:
 
 
 @app.cli.command("upgrade-nurse-many-to-many-schema")
-def upgrade_nurse_many_to_many_schema() -> None:
+def nangCapCauTrucDanhSachKham() -> None:
     """Move registration rows into the daily-list/patient association schema."""
-    from app.migration import upgrade_nurse_many_to_many_schema as upgrade_schema
+    from app.migration import nangCapCauTrucDanhSachKham as upgrade_schema
 
     try:
         changed = upgrade_schema(db.engine)
@@ -238,14 +238,14 @@ def upgrade_nurse_many_to_many_schema() -> None:
 
 @app.cli.command("move-waiting-registrations")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def move_waiting_registrations_command(maintenance: bool) -> None:
+def lenhChuyenDangKyChoCu(maintenance: bool) -> None:
     """Move legacy waiting registrations to the next available exam day."""
-    from app.dao import migrate_waiting_registrations
+    from app.dao import chuyenDangKyChoCu
 
     if not maintenance:
         raise click.ClickException("Stop all application writers and pass --maintenance.")
     try:
-        moved = migrate_waiting_registrations()
+        moved = chuyenDangKyChoCu()
     except ValueError as error:
         db.session.rollback()
         raise click.ClickException(str(error)) from None
@@ -258,17 +258,17 @@ def move_waiting_registrations_command(maintenance: bool) -> None:
 
 @app.cli.command("drop-nurse-exam-profile-columns")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def drop_nurse_exam_profile_columns_command(maintenance: bool) -> None:
+def lenhXoaCotHoSoTrung(maintenance: bool) -> None:
     """Remove duplicate patient profile fields from exam-list details."""
     from sqlalchemy.exc import SQLAlchemyError
-    from app.migration import drop_nurse_exam_profile_columns
+    from app.migration import xoaCotHoSoTrung
 
     if not maintenance:
         raise click.ClickException(
             "Stop all application writers and pass --maintenance."
         )
     try:
-        changed = drop_nurse_exam_profile_columns(db.engine)
+        changed = xoaCotHoSoTrung(db.engine)
     except ValueError as error:
         raise click.ClickException(str(error)) from None
     except SQLAlchemyError:
@@ -284,7 +284,7 @@ def drop_nurse_exam_profile_columns_command(maintenance: bool) -> None:
 
 
 @app.cli.command("seed-doctor-demo")
-def seed_doctor_demo() -> None:
+def taoDuLieuMauBacSi() -> None:
     """Create clearly labeled sample records for the doctor workflow."""
     from sqlalchemy import inspect
     from app.models import (
@@ -307,7 +307,7 @@ def seed_doctor_demo() -> None:
         account = TaiKhoan(
             tenDangNhap=username, role=Role.PATIENT, trangThai=False,
         )
-        account.set_password(secrets.token_urlsafe(32))
+        account.datMatKhau(secrets.token_urlsafe(32))
         account.benhNhan = BenhNhan(
             hoTen="Nguyễn Khánh Như Quỳnh",
             gioiTinh="Khác",
@@ -374,7 +374,7 @@ def seed_doctor_demo() -> None:
             demo_account = TaiKhoan(
                 tenDangNhap=patient_username, role=Role.PATIENT, trangThai=False,
             )
-            demo_account.set_password(secrets.token_urlsafe(32))
+            demo_account.datMatKhau(secrets.token_urlsafe(32))
             demo_account.benhNhan = BenhNhan(
                 hoTen=patient_name,
                 gioiTinh="Khác",
@@ -448,22 +448,22 @@ def seed_doctor_demo() -> None:
 @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
 @click.option("--name", prompt=True)
 @click.option("--phone", default="", help="Optional employee phone number.")
-def create_admin(username: str, password: str, name: str, phone: str) -> None:
-    from app.dao import create_account
-    from app.utils import account_data
+def taoQuanTriVien(username: str, password: str, name: str, phone: str) -> None:
+    from app.dao import taoTaiKhoan
+    from app.utils import layDuLieuTaiKhoan
     try:
-        data = account_data({
+        data = layDuLieuTaiKhoan({
             "tenDangNhap": username, "matKhau": password, "hoTen": name,
             "soDienThoai": phone, "role": "ADMIN", "trangThai": "on",
         })
-        create_account(data)
+        taoTaiKhoan(data)
     except ValueError as error:
         raise click.ClickException(str(error)) from error
     click.echo("Administrator created.")
 
 
 @app.cli.command("seed-admin-demo")
-def seed_admin_demo() -> None:
+def taoDuLieuMauQuanTri() -> None:
     """Initialize approved rules and three labeled medicine samples, without overwriting data."""
     from decimal import Decimal
     from app.models import DonViThuoc, QuyDinh, Thuoc
@@ -512,14 +512,14 @@ def seed_admin_demo() -> None:
 
 @app.cli.command("migrate-account-ids")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def migrate_account_ids_command(maintenance: bool) -> None:
+def lenhChuyenMaTaiKhoan(maintenance: bool) -> None:
     """Preserve old UUID tables and migrate account/profile keys to integers."""
     from sqlalchemy.exc import SQLAlchemyError
-    from app.migration import migrate_account_ids
+    from app.migration import chuyenMaTaiKhoan
     if not maintenance:
         raise click.ClickException("Stop all application writers and pass --maintenance.")
     try:
-        changed = migrate_account_ids(db.engine)
+        changed = chuyenMaTaiKhoan(db.engine)
     except ValueError as error:
         raise click.ClickException(str(error)) from error
     except SQLAlchemyError as error:

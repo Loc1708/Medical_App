@@ -6,7 +6,7 @@
         return;
     }
     const data = JSON.parse(document.querySelector("#report-data").textContent);
-    const formatMoney = value => new Intl.NumberFormat("vi-VN").format(value) + " VNĐ";
+    const dinhDangTien = value => new Intl.NumberFormat("vi-VN").format(value) + " VNĐ";
     new Chart(document.querySelector("#revenue-chart"), {
         type: "bar",
         data: {
@@ -19,7 +19,7 @@
         options: {
             responsive: true, maintainAspectRatio: false,
             scales: {
-                money: {beginAtZero: true, position: "left", ticks: {callback: formatMoney}},
+                money: {beginAtZero: true, position: "left", ticks: {callback: dinhDangTien}},
                 patients: {beginAtZero: true, position: "right", ticks: {precision: 0}, grid: {drawOnChartArea: false}}
             }
         }

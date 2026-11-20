@@ -1,7 +1,7 @@
 let receiptPaidState = 'DA_THANH_TOAN';
 let receiptUnpaidState = 'CHUA_THANH_TOAN';
 
-function searchPatientByCode() {
+function timKiemBenhNhan() {
     let kw = document.getElementById('kw').value.trim();
     let list = document.getElementById('list');
 
@@ -29,7 +29,7 @@ function searchPatientByCode() {
                     html += `
                         <li class="list-group-item list-group-item-action"
                             style="cursor: pointer;"
-                            onclick="selectPatient('${p.code}', '${p.name}')">
+                            onclick="chonBenhNhan('${p.code}', '${p.name}')">
                             <strong>${p.name}</strong>
                             <small class="text-muted">(${p.code})</small>
                         </li>`;
@@ -44,18 +44,18 @@ function searchPatientByCode() {
         });
 }
 
-function selectPatient(patientCode, patientName) {
+function chonBenhNhan(patientCode, patientName) {
     document.getElementById('kw').value = patientName;
     let list = document.getElementById('list');
     list.innerHTML = '';
     list.classList.add('d-none');
 
-    getUnpaidReceiptsList(patientCode);
+    layDanhSachHoaDonChuaThanhToan(patientCode);
 }
 
 let currentReceipt = [];
 
-function getUnpaidReceiptsList(patientCode) {
+function layDanhSachHoaDonChuaThanhToan(patientCode) {
     let dropdown = document.getElementById('receipts_list');
     
     fetch(`/cashier/api/receipts?ma_bn=${encodeURIComponent(patientCode)}`).then(response => {
@@ -76,7 +76,7 @@ function getUnpaidReceiptsList(patientCode) {
                          </option>`;
             });
             dropdown.innerHTML = html;
-            updateReceiptForm(null);
+            capNhatHoaDon(null);
 
         }).catch(err => {
             dropdown.innerHTML = `<option value="">${err.message}</option>`;
@@ -84,13 +84,13 @@ function getUnpaidReceiptsList(patientCode) {
 }
 
 
-function selectReceipt() {
+function chonHoaDon() {
     let id = document.getElementById('receipts_list').value;
     let receipt = currentReceipt.find(r => String(r.id) === id);
-    updateReceiptForm(receipt || null);
+    capNhatHoaDon(receipt || null);
 }
 
-function updateReceiptForm(r) {
+function capNhatHoaDon(r) {
     document.getElementById('hoTenBN').innerText = r ? document.getElementById('kw').value : '---';
     document.getElementById('ngayKham').innerText = r ? r.date : '---';
     document.getElementById('tienKham').innerText = (r ? r.medical_fee : 0).toLocaleString('vi-VN') + ' VNĐ';
@@ -99,7 +99,7 @@ function updateReceiptForm(r) {
     document.getElementById('btnThanhToan').disabled = !r;
 }
 
-function resetCashierForm() {
+function lamMoiBieuMauThuNgan() {
     document.getElementById('kw').value = '';
 
     let list = document.getElementById('list');
@@ -110,10 +110,10 @@ function resetCashierForm() {
         '<option value="" selected disabled hidden> --Danh sách hóa đơn chưa thanh toán-- </option>';
 
     currentReceipt = [];
-    updateReceiptForm(null);
+    capNhatHoaDon(null);
 }
 
-function payReceipt() {
+function thanhToan() {
     let id = document.getElementById('receipts_list').value;
     if (!id) return;
 
@@ -131,6 +131,6 @@ function payReceipt() {
             return data;
         })).then(data => {
             alert(data.message);
-            resetCashierForm();
+            lamMoiBieuMauThuNgan();
         }).catch(err => alert(err.message));
 }

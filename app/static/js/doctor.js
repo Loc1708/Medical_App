@@ -32,13 +32,13 @@ if (doctorStatus) {
     let medicineSearchTimer = null;
     const activeDraftStorageKey = "medical-app-doctor-active-draft";
 
-    function showDoctorStatus(message, isError = false) {
+    function hienThiTrangThaiBacSi(message, isError = false) {
         doctorStatus.textContent = message;
         doctorStatus.classList.toggle("is-error", isError);
         doctorStatus.hidden = false;
     }
 
-    function showPatientHistoryMessage(message) {
+    function hienThiThongBaoLichSu(message) {
         historyRequestId += 1;
         historyExams = [];
         historyRows.replaceChildren();
@@ -49,7 +49,7 @@ if (doctorStatus) {
         historyTable.hidden = true;
     }
 
-    function setCurrentDraftId(draftId) {
+    function datMaBanNhapHienTai(draftId) {
         currentDraftId = draftId;
         if (draftId) {
             sessionStorage.setItem(activeDraftStorageKey, draftId);
@@ -71,42 +71,42 @@ if (doctorStatus) {
             || document.querySelector("#symptoms").value.trim() !== ""
             || document.querySelector("#diagnosis").value.trim() !== "";
         selectedPatientCode = "";
-        setCurrentDraftId(null);
+        datMaBanNhapHienTai(null);
         draftDirty = false;
         draftRevision += 1;
         selectedMedicines.clear();
         document.querySelector("#symptoms").value = "";
         document.querySelector("#diagnosis").value = "";
-        renderPrescription();
+        hienThiDonThuoc();
         patientCard.hidden = true;
-        showPatientHistoryMessage(
+        hienThiThongBaoLichSu(
             "Hãy tìm bệnh nhân theo mã trước khi xem danh sách phiếu khám."
         );
         if (discardedDraft || discardedForm) {
-            showDoctorStatus(
+            hienThiTrangThaiBacSi(
                 "Đã đổi mã bệnh nhân; nội dung chưa lưu trong biểu mẫu đã được xóa. Bản nháp đã lưu vẫn còn trong lịch sử."
             );
         }
     });
 
-    async function readJson(response) {
+    async function docJson(response) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Yêu cầu không thành công.");
         return data;
     }
 
-    function addCell(row, value) {
+    function themO(row, value) {
         const cell = document.createElement("td");
         cell.textContent = value;
         row.append(cell);
         return cell;
     }
 
-    function renderHistoryPagination(page, pages) {
+    function hienThiPhanTrangLichSu(page, pages) {
         historyPagination.replaceChildren();
         if (pages <= 1) return;
 
-        function addPageButton(label, target, disabled = false, current = false) {
+        function themNutTrang(label, target, disabled = false, current = false) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = current
@@ -119,27 +119,27 @@ if (doctorStatus) {
             historyPagination.append(button);
         }
 
-        addPageButton("‹ Trước", page - 1, page === 1);
+        themNutTrang("‹ Trước", page - 1, page === 1);
         const firstPage = Math.max(1, Math.min(page - 2, pages - 4));
         const lastPage = Math.min(pages, firstPage + 4);
         for (let target = firstPage; target <= lastPage; target += 1) {
-            addPageButton(String(target), target, false, target === page);
+            themNutTrang(String(target), target, false, target === page);
         }
-        addPageButton("Sau ›", page + 1, page === pages);
+        themNutTrang("Sau ›", page + 1, page === pages);
     }
 
-    function renderPatientHistory(data) {
+    function hienThiLichSuKham(data) {
         historyExams = data.exams;
         historyRows.replaceChildren();
         historyExams.forEach(exam => {
             const row = document.createElement("tr");
-            addCell(row, exam.date);
-            addCell(row, exam.id);
-            addCell(row, exam.symptoms);
-            addCell(row, exam.doctor);
-            addCell(row, exam.diagnosis || "Chưa ghi");
-            addCell(row, String(exam.prescription_count));
-            addCell(row, exam.status === "NHAP" ? "Bản nháp" : "Đã lập");
+            themO(row, exam.date);
+            themO(row, exam.id);
+            themO(row, exam.symptoms);
+            themO(row, exam.doctor);
+            themO(row, exam.diagnosis || "Chưa ghi");
+            themO(row, String(exam.prescription_count));
+            themO(row, exam.status === "NHAP" ? "Bản nháp" : "Đã lập");
 
             const actionsCell = document.createElement("td");
             const actions = document.createElement("div");
@@ -170,12 +170,12 @@ if (doctorStatus) {
         const last = Math.min(data.page * historyPageSize, data.total);
         historySummary.textContent =
             `Hiển thị ${first}–${last} trên ${data.total} phiếu khám`;
-        renderHistoryPagination(data.page, data.pages);
+        hienThiPhanTrangLichSu(data.page, data.pages);
         patientHistoryMessage.hidden = true;
         historyTable.hidden = false;
     }
 
-    function toggleHistoryPrescriptions(button) {
+    function doiHienThiDonThuocLichSu(button) {
         const exam = historyExams.find(item => item.id === button.dataset.historyPrescriptions);
         if (!exam) return;
 
@@ -215,11 +215,11 @@ if (doctorStatus) {
             const body = document.createElement("tbody");
             exam.prescriptions.forEach(prescription => {
                 const row = document.createElement("tr");
-                addCell(row, prescription.code);
-                addCell(row, prescription.name);
-                addCell(row, prescription.unit);
-                addCell(row, String(prescription.quantity));
-                addCell(row, prescription.instructions || "—");
+                themO(row, prescription.code);
+                themO(row, prescription.name);
+                themO(row, prescription.unit);
+                themO(row, String(prescription.quantity));
+                themO(row, prescription.instructions || "—");
                 body.append(row);
             });
             table.append(body);
@@ -231,7 +231,7 @@ if (doctorStatus) {
         button.setAttribute("aria-expanded", "true");
     }
 
-    function showPatient(patient) {
+    function hienThiBenhNhan(patient) {
         selectedPatientCode = patient.code;
         patientCard.hidden = false;
         document.querySelector("#patient-code").textContent = patient.code;
@@ -241,17 +241,17 @@ if (doctorStatus) {
         document.querySelector("#patient-phone").textContent = patient.phone;
         document.querySelector("#patient-address").textContent = patient.address;
         patientQuery.value = patient.code;
-        showPatientHistoryMessage(
+        hienThiThongBaoLichSu(
             `Đã tìm thấy ${patient.name}. Nhấn “Xem lịch sử khám” để tải phiếu khám của bệnh nhân.`
         );
     }
 
-    async function findPatient() {
+    async function timBenhNhan() {
         const code = patientQuery.value.trim();
         if (!code) {
             selectedPatientCode = "";
             patientCard.hidden = true;
-            showPatientHistoryMessage(
+            hienThiThongBaoLichSu(
                 "Chưa nhập mã bệnh nhân. Vui lòng nhập mã bệnh nhân để xem danh sách phiếu khám."
             );
             patientQuery.focus();
@@ -261,23 +261,23 @@ if (doctorStatus) {
             const response = await fetch(
                 `/doctor/api/patients?code=${encodeURIComponent(code)}`
             );
-            const data = await readJson(response);
-            showPatient(data.patient);
+            const data = await docJson(response);
+            hienThiBenhNhan(data.patient);
             if (document.querySelector("#symptoms").value.trim()
                 || document.querySelector("#diagnosis").value.trim()
                 || selectedMedicines.size) {
-                scheduleDraftAutosave();
+                henTuDongLuuBanNhap();
             }
         } catch (error) {
             selectedPatientCode = "";
             patientCard.hidden = true;
-            showPatientHistoryMessage(error.message);
+            hienThiThongBaoLichSu(error.message);
         }
     }
 
-    async function loadPatientHistory(page = 1) {
+    async function taiLichSuKham(page = 1) {
         if (!selectedPatientCode) {
-            await findPatient();
+            await timBenhNhan();
             if (!selectedPatientCode) return;
         }
         const requestPatientCode = selectedPatientCode;
@@ -291,32 +291,32 @@ if (doctorStatus) {
             const response = await fetch(
                 url
             );
-            const data = await readJson(response);
+            const data = await docJson(response);
             if (requestId !== historyRequestId || requestPatientCode !== selectedPatientCode) {
                 return;
             }
             if (!data.exams.length) {
-                showPatientHistoryMessage("Bệnh nhân chưa có phiếu khám trước đó.");
+                hienThiThongBaoLichSu("Bệnh nhân chưa có phiếu khám trước đó.");
                 return;
             }
-            renderPatientHistory(data);
+            hienThiLichSuKham(data);
         } catch (error) {
             if (requestId === historyRequestId) {
-                showPatientHistoryMessage(error.message);
+                hienThiThongBaoLichSu(error.message);
             }
         }
     }
 
-    async function resumeDraft(examId) {
+    async function tiepTucBanNhap(examId) {
         try {
             const response = await fetch(`/doctor/api/exams/${encodeURIComponent(examId)}`);
-            const data = await readJson(response);
+            const data = await docJson(response);
             const patientResponse = await fetch(
                 `/doctor/api/patients?code=${encodeURIComponent(data.exam.patient_code)}`
             );
-            const patientData = await readJson(patientResponse);
-            showPatient(patientData.patient);
-            setCurrentDraftId(data.exam.id);
+            const patientData = await docJson(patientResponse);
+            hienThiBenhNhan(patientData.patient);
+            datMaBanNhapHienTai(data.exam.id);
             document.querySelector("#symptoms").value = data.exam.symptoms;
             document.querySelector("#diagnosis").value = data.exam.diagnosis || "";
             selectedMedicines.clear();
@@ -331,33 +331,33 @@ if (doctorStatus) {
                     editing: false,
                 });
             });
-            renderPrescription();
-            showDoctorStatus(`Đang tiếp tục bản nháp ${examId}.`);
-            await loadPatientHistory();
-            await loadDoctorDrafts();
+            hienThiDonThuoc();
+            hienThiTrangThaiBacSi(`Đang tiếp tục bản nháp ${examId}.`);
+            await taiLichSuKham();
+            await taiDanhSachBanNhap();
             document.querySelector("#exam-details").scrollIntoView({
                 block: "start", behavior: "smooth",
             });
         } catch (error) {
-            showDoctorStatus(error.message, true);
+            hienThiTrangThaiBacSi(error.message, true);
         }
     }
 
-    async function loadDoctorDrafts() {
+    async function taiDanhSachBanNhap() {
         try {
             const response = await fetch("/doctor/api/drafts");
-            const data = await readJson(response);
+            const data = await docJson(response);
             draftsRows.replaceChildren();
             draftsCount.textContent = String(data.drafts.length);
             draftsEmpty.hidden = data.drafts.length > 0;
             draftsTable.hidden = data.drafts.length === 0;
             data.drafts.forEach(draft => {
                 const row = document.createElement("tr");
-                addCell(row, draft.date);
-                addCell(row, `${draft.patient_name} (${draft.patient_code})`);
-                addCell(row, draft.symptoms || "Chưa nhập");
-                addCell(row, draft.diagnosis || "Chưa nhập");
-                addCell(row, String(draft.prescription_count));
+                themO(row, draft.date);
+                themO(row, `${draft.patient_name} (${draft.patient_code})`);
+                themO(row, draft.symptoms || "Chưa nhập");
+                themO(row, draft.diagnosis || "Chưa nhập");
+                themO(row, String(draft.prescription_count));
                 const action = document.createElement("td");
                 const button = document.createElement("button");
                 button.type = "button";
@@ -381,13 +381,13 @@ if (doctorStatus) {
         }
     }
 
-    async function restoreActiveDraft() {
+    async function khoiPhucBanNhapDangLam() {
         const draftId = sessionStorage.getItem(activeDraftStorageKey);
         if (!draftId) return;
-        await resumeDraft(draftId);
+        await tiepTucBanNhap(draftId);
     }
 
-    async function deleteDraft(draftId, button) {
+    async function xoaBanNhap(draftId, button) {
         if (!window.confirm("Bạn có chắc muốn xóa bản nháp này? Thao tác này không thể hoàn tác.")) {
             return;
         }
@@ -406,31 +406,31 @@ if (doctorStatus) {
                     },
                 }
             );
-            const result = await readJson(response);
+            const result = await docJson(response);
             if (draftId === currentDraftId) {
-                setCurrentDraftId(null);
+                datMaBanNhapHienTai(null);
                 draftDirty = false;
                 draftRevision += 1;
                 document.querySelector("#symptoms").value = "";
                 document.querySelector("#diagnosis").value = "";
                 selectedMedicines.clear();
-                renderPrescription();
+                hienThiDonThuoc();
             }
-            showDoctorStatus(result.message);
-            await loadDoctorDrafts();
-            if (selectedPatientCode) await loadPatientHistory();
+            hienThiTrangThaiBacSi(result.message);
+            await taiDanhSachBanNhap();
+            if (selectedPatientCode) await taiLichSuKham();
         } catch (error) {
-            showDoctorStatus(error.message, true);
+            hienThiTrangThaiBacSi(error.message, true);
         } finally {
             button.disabled = false;
         }
     }
 
-    function renderMedicinePagination(page, pages) {
+    function hienThiPhanTrangThuoc(page, pages) {
         medicinePagination.replaceChildren();
         if (pages <= 1) return;
 
-        function addPageButton(label, target, disabled = false, current = false) {
+        function themNutTrang(label, target, disabled = false, current = false) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = current
@@ -443,16 +443,16 @@ if (doctorStatus) {
             medicinePagination.append(button);
         }
 
-        addPageButton("‹ Trước", page - 1, page === 1);
+        themNutTrang("‹ Trước", page - 1, page === 1);
         const firstPage = Math.max(1, Math.min(page - 2, pages - 4));
         const lastPage = Math.min(pages, firstPage + 4);
         for (let target = firstPage; target <= lastPage; target += 1) {
-            addPageButton(String(target), target, false, target === page);
+            themNutTrang(String(target), target, false, target === page);
         }
-        addPageButton("Sau ›", page + 1, page === pages);
+        themNutTrang("Sau ›", page + 1, page === pages);
     }
 
-    async function searchMedicines(page = 1) {
+    async function traCuuThuoc(page = 1) {
         window.clearTimeout(medicineSearchTimer);
         medicineSearchTimer = null;
         const keyword = medicineQuery.value.trim();
@@ -464,11 +464,11 @@ if (doctorStatus) {
             url.searchParams.set("page", String(page));
             if (keyword) url.searchParams.set("q", keyword);
             const response = await fetch(url);
-            const data = await readJson(response);
+            const data = await docJson(response);
             if (requestId !== medicineRequestId) return;
             if (!data.medicines.length) {
                 const row = document.createElement("tr");
-                const cell = addCell(
+                const cell = themO(
                     row,
                     keyword
                         ? "Không tìm thấy thuốc còn tồn kho phù hợp."
@@ -480,11 +480,11 @@ if (doctorStatus) {
             } else {
                 data.medicines.forEach(medicine => {
                     const row = document.createElement("tr");
-                    addCell(row, medicine.code);
-                    addCell(row, medicine.name);
-                    addCell(row, medicine.unit);
-                    addCell(row, String(medicine.stock));
-                    addCell(
+                    themO(row, medicine.code);
+                    themO(row, medicine.name);
+                    themO(row, medicine.unit);
+                    themO(row, String(medicine.stock));
+                    themO(
                         row,
                         `${new Intl.NumberFormat("vi-VN").format(medicine.price)} VNĐ`
                     );
@@ -504,29 +504,29 @@ if (doctorStatus) {
             medicineSummary.textContent = data.total
                 ? `Hiển thị ${first}–${last} trên ${data.total} thuốc`
                 : "Không có thuốc phù hợp.";
-            renderMedicinePagination(data.page, data.pages);
+            hienThiPhanTrangThuoc(data.page, data.pages);
         } catch (error) {
             if (requestId === medicineRequestId) {
                 medicineSummary.textContent = "Không tải được danh sách thuốc.";
-                showDoctorStatus(error.message, true);
+                hienThiTrangThaiBacSi(error.message, true);
             }
         }
     }
 
-    function scheduleMedicineSearch() {
+    function henTimKiemThuoc() {
         window.clearTimeout(medicineSearchTimer);
         medicineRequestId += 1;
         medicineSearchTimer = window.setTimeout(() => {
             medicineSearchTimer = null;
-            searchMedicines(1);
+            traCuuThuoc(1);
         }, 250);
     }
 
-    function renderPrescription() {
+    function hienThiDonThuoc() {
         prescriptionItems.replaceChildren();
         if (!selectedMedicines.size) {
             const row = document.createElement("tr");
-            const cell = addCell(row, "Chưa có thuốc trong đơn.");
+            const cell = themO(row, "Chưa có thuốc trong đơn.");
             cell.colSpan = 5;
             cell.className = "doctor-table-empty";
             prescriptionItems.append(row);
@@ -534,8 +534,8 @@ if (doctorStatus) {
         }
         selectedMedicines.forEach(medicine => {
             const row = document.createElement("tr");
-            addCell(row, `${medicine.name} (${medicine.code})`);
-            addCell(row, medicine.unit);
+            themO(row, `${medicine.name} (${medicine.code})`);
+            themO(row, medicine.unit);
 
             const quantityCell = document.createElement("td");
             const quantity = document.createElement("input");
@@ -589,7 +589,7 @@ if (doctorStatus) {
         });
     }
 
-    function scheduleDraftAutosave() {
+    function henTuDongLuuBanNhap() {
         if (!selectedPatientCode) return;
         draftDirty = true;
         draftRevision += 1;
@@ -605,8 +605,8 @@ if (doctorStatus) {
         }, 500);
     }
 
-    document.querySelector("#symptoms").addEventListener("input", scheduleDraftAutosave);
-    document.querySelector("#diagnosis").addEventListener("input", scheduleDraftAutosave);
+    document.querySelector("#symptoms").addEventListener("input", henTuDongLuuBanNhap);
+    document.querySelector("#diagnosis").addEventListener("input", henTuDongLuuBanNhap);
     window.addEventListener("pagehide", () => {
         window.clearTimeout(autosaveTimer);
         if (!draftDirty || !selectedPatientCode
@@ -642,42 +642,42 @@ if (doctorStatus) {
             draftsPanel.hidden = !isOpening;
             draftsButton.setAttribute("aria-expanded", String(isOpening));
             draftsButton.classList.toggle("doctor-drafts-open", isOpening);
-            loadDoctorDrafts();
+            taiDanhSachBanNhap();
             if (isOpening) {
                 draftsPanel.scrollIntoView({ block: "start", behavior: "smooth" });
             }
             return;
         }
         if (searchButton) {
-            findPatient();
+            timBenhNhan();
             return;
         }
         if (historyButton) {
-            loadPatientHistory();
+            taiLichSuKham();
             return;
         }
         if (historyPageButton && !historyPageButton.disabled) {
-            loadPatientHistory(Number(historyPageButton.dataset.historyPage));
+            taiLichSuKham(Number(historyPageButton.dataset.historyPage));
             return;
         }
         if (historyPrescriptionsButton) {
-            toggleHistoryPrescriptions(historyPrescriptionsButton);
+            doiHienThiDonThuocLichSu(historyPrescriptionsButton);
             return;
         }
         if (medicineButton) {
-            searchMedicines(1);
+            traCuuThuoc(1);
             return;
         }
         if (medicinePageButton && !medicinePageButton.disabled) {
-            searchMedicines(Number(medicinePageButton.dataset.medicinePage));
+            traCuuThuoc(Number(medicinePageButton.dataset.medicinePage));
             return;
         }
         if (resumeButton) {
-            resumeDraft(resumeButton.dataset.resumeDraft);
+            tiepTucBanNhap(resumeButton.dataset.resumeDraft);
             return;
         }
         if (deleteDraftButton) {
-            deleteDraft(deleteDraftButton.dataset.deleteDraft, deleteDraftButton);
+            xoaBanNhap(deleteDraftButton.dataset.deleteDraft, deleteDraftButton);
             return;
         }
         if (editMedicineButton) {
@@ -688,7 +688,7 @@ if (doctorStatus) {
                 const instructions = medicine.editInstructions ?? "";
                 if (!Number.isInteger(quantity) || quantity < 1 || quantity > medicine.stock
                     || instructions.length > 255) {
-                    showDoctorStatus("Số lượng phải nằm trong tồn kho và cách dùng không vượt quá 255 ký tự.", true);
+                    hienThiTrangThaiBacSi("Số lượng phải nằm trong tồn kho và cách dùng không vượt quá 255 ký tự.", true);
                     return;
                 }
                 medicine.quantity = quantity;
@@ -696,19 +696,19 @@ if (doctorStatus) {
                 delete medicine.editQuantity;
                 delete medicine.editInstructions;
                 medicine.editing = false;
-                scheduleDraftAutosave();
+                henTuDongLuuBanNhap();
             } else {
                 medicine.editQuantity = medicine.quantity;
                 medicine.editInstructions = medicine.instructions;
                 medicine.editing = true;
             }
-            renderPrescription();
+            hienThiDonThuoc();
             return;
         }
         if (removeMedicineButton) {
             selectedMedicines.delete(removeMedicineButton.dataset.removeMedicine);
-            renderPrescription();
-            scheduleDraftAutosave();
+            hienThiDonThuoc();
+            henTuDongLuuBanNhap();
             return;
         }
         if (addButton) {
@@ -725,8 +725,8 @@ if (doctorStatus) {
                     instructions: "",
                     editing: false,
                 });
-                renderPrescription();
-                scheduleDraftAutosave();
+                hienThiDonThuoc();
+                henTuDongLuuBanNhap();
             }
             return;
         }
@@ -744,26 +744,26 @@ if (doctorStatus) {
             window.clearTimeout(autosaveTimer);
         }
         if (!selectedPatientCode) {
-            if (!silent) showDoctorStatus("Hãy tìm bệnh nhân trước khi lưu phiếu.", true);
+            if (!silent) hienThiTrangThaiBacSi("Hãy tìm bệnh nhân trước khi lưu phiếu.", true);
             patientQuery.focus();
             return false;
         }
         const symptoms = document.querySelector("#symptoms").value.trim();
         const diagnosis = document.querySelector("#diagnosis").value.trim();
         if (status === "DA_LAP" && !symptoms) {
-            if (!silent) showDoctorStatus("Vui lòng nhập triệu chứng trước khi lập phiếu.", true);
+            if (!silent) hienThiTrangThaiBacSi("Vui lòng nhập triệu chứng trước khi lập phiếu.", true);
             document.querySelector("#symptoms").focus();
             return false;
         }
         if (status === "DA_LAP" && !diagnosis) {
-            if (!silent) showDoctorStatus("Vui lòng nhập dự đoán loại bệnh trước khi lập phiếu.", true);
+            if (!silent) hienThiTrangThaiBacSi("Vui lòng nhập dự đoán loại bệnh trước khi lập phiếu.", true);
             document.querySelector("#diagnosis").focus();
             return false;
         }
         const prescriptions = Array.from(selectedMedicines.values());
         if (prescriptions.some(item => item.editing)) {
             if (!silent) {
-                showDoctorStatus("Hãy bấm “Lưu” ở từng dòng thuốc đang chỉnh sửa trước khi lưu phiếu.", true);
+                hienThiTrangThaiBacSi("Hãy bấm “Lưu” ở từng dòng thuốc đang chỉnh sửa trước khi lưu phiếu.", true);
             }
             return false;
         }
@@ -773,7 +773,7 @@ if (doctorStatus) {
             || (status === "DA_LAP" && !item.instructions.trim())
         )) {
             if (!silent) {
-                showDoctorStatus("Kiểm tra lại số lượng tồn kho và cách dùng của từng thuốc.", true);
+                hienThiTrangThaiBacSi("Kiểm tra lại số lượng tồn kho và cách dùng của từng thuốc.", true);
             }
             return false;
         }
@@ -803,38 +803,38 @@ if (doctorStatus) {
                     })),
                 }),
             });
-            const result = await readJson(response);
+            const result = await docJson(response);
             if (status === "DA_LAP") {
                 if (requestPatientCode === selectedPatientCode) {
-                    setCurrentDraftId(null);
+                    datMaBanNhapHienTai(null);
                     draftDirty = false;
                     document.querySelector("#symptoms").value = "";
                     document.querySelector("#diagnosis").value = "";
                     selectedMedicines.clear();
-                    renderPrescription();
+                    hienThiDonThuoc();
                 }
             } else if (requestPatientCode === selectedPatientCode) {
-                setCurrentDraftId(result.exam_id);
+                datMaBanNhapHienTai(result.exam_id);
                 if (requestRevision === draftRevision) {
                     draftDirty = false;
                 } else {
-                    scheduleDraftAutosave();
+                    henTuDongLuuBanNhap();
                 }
             }
             if (!keepalive) {
-                showDoctorStatus(
+                hienThiTrangThaiBacSi(
                     silent ? `Đã tự lưu bản nháp ${result.exam_id}.`
                         : `${result.message} Mã phiếu: ${result.exam_id}`
                             + (result.invoice_id ? ` · Mã hóa đơn: ${result.invoice_id}` : "")
                 );
                 if (requestPatientCode === selectedPatientCode) {
-                    await loadPatientHistory();
+                    await taiLichSuKham();
                 }
-                await loadDoctorDrafts();
+                await taiDanhSachBanNhap();
             }
             return true;
         } catch (error) {
-            if (!keepalive) showDoctorStatus(error.message, true);
+            if (!keepalive) hienThiTrangThaiBacSi(error.message, true);
             return false;
         } finally {
             if (button) button.disabled = false;
@@ -842,26 +842,26 @@ if (doctorStatus) {
         }
     }
 
-    loadDoctorDrafts();
-    restoreActiveDraft();
-    searchMedicines();
-    medicineQuery.addEventListener("input", scheduleMedicineSearch);
+    taiDanhSachBanNhap();
+    khoiPhucBanNhapDangLam();
+    traCuuThuoc();
+    medicineQuery.addEventListener("input", henTimKiemThuoc);
 
     document.addEventListener("keydown", event => {
         if (event.key !== "Enter") return;
         if (event.target === patientQuery) {
             event.preventDefault();
-            findPatient();
+            timBenhNhan();
         } else if (event.target === medicineQuery) {
             event.preventDefault();
-            searchMedicines();
+            traCuuThuoc();
         }
     });
 
     document.addEventListener("click", event => {
         const button = event.target.closest("[data-doctor-prototype]");
         if (!button) return;
-        showDoctorStatus(button.dataset.doctorPrototype);
+        hienThiTrangThaiBacSi(button.dataset.doctorPrototype);
         doctorStatus.scrollIntoView({ block: "nearest", behavior: "smooth" });
     });
 }

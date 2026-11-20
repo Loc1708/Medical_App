@@ -7,19 +7,19 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import app, dao, db
 from app.models import Role
-from app.utils import roles_required, send_sms
+from app.utils import yeuCauVaiTro, guiTinNhanSms
 
 
-@app.get("/nurse/history")
-@roles_required(Role.NURSE)
-def nurse_exam_history():
+@app.get("/nurse/history", endpoint="nurse_exam_history")
+@yeuCauVaiTro(Role.NURSE)
+def lichSuDanhSachKham():
     return render_template(
         "nurse/history.html",
-        history=dao.nurse_confirmed_exam_history(),
+        history=dao.layLichSuDanhSachDaChot(),
     )
 
 
-def _nurse_exam_date(value: object) -> date:
+def _layNgayKham(value: object) -> date:
     if not isinstance(value, str):
         raise ValueError("Ngày khám không hợp lệ.")
     try:
@@ -28,7 +28,7 @@ def _nurse_exam_date(value: object) -> date:
         raise ValueError("Ngày khám không hợp lệ.") from None
 
 
-def _nurse_exam_payload(payload: object) -> dict:
+def _kiemTraDuLieuKham(payload: object) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("Dữ liệu bệnh nhân không hợp lệ.")
     name = payload.get("name", "")
@@ -58,7 +58,7 @@ def _nurse_exam_payload(payload: object) -> dict:
     }
 
 
-def _nurse_exam_json(registration) -> dict:
+def _chuyenLuotKhamThanhJson(registration) -> dict:
     patient = registration.benhNhan
     return {
         "id": registration.maCTDSKham,
@@ -73,13 +73,13 @@ def _nurse_exam_json(registration) -> dict:
     }
 
 
-@app.get("/nurse/api/lists")
-@roles_required(Role.NURSE)
-def nurse_exam_lists():
+@app.get("/nurse/api/lists", endpoint="nurse_exam_lists")
+@yeuCauVaiTro(Role.NURSE)
+def layDanhSachKhamYTa():
     try:
-        exam_date = _nurse_exam_date(request.args.get("date"))
-        limit = dao.daily_patient_limit()
-        active, waiting = dao.nurse_exam_list(exam_date)
+        exam_date = _layNgayKham(request.args.get("date"))
+        limit = dao.layGioiHanBenhNhanNgay()
+        active, waiting = dao.layDanhSachKham(exam_date)
     except ValueError as error:
         return jsonify(error=str(error)), 400
     except SQLAlchemyError:
@@ -93,19 +93,19 @@ def nurse_exam_lists():
     return jsonify(
         date=exam_date.isoformat(),
         limit=limit,
-        active=[_nurse_exam_json(entry) for entry in active],
-        waiting=[_nurse_exam_json(entry) for entry in waiting],
+        active=[_chuyenLuotKhamThanhJson(entry) for entry in active],
+        waiting=[_chuyenLuotKhamThanhJson(entry) for entry in waiting],
         confirmed=confirmed,
         locked=locked,
-        today=dao.clinic_today().isoformat(),
+        today=dao.ngayHienTaiPhongKham().isoformat(),
     )
 
 
-@app.get("/nurse/api/patients")
-@roles_required(Role.NURSE)
-def nurse_find_patient():
+@app.get("/nurse/api/patients", endpoint="nurse_find_patient")
+@yeuCauVaiTro(Role.NURSE)
+def yTaTimBenhNhan():
     query = request.args.get("q", "").strip()
-    patients = dao.search_patients_by_code(query) if query else []
+    patients = dao.timBenhNhanTheoMa(query) if query else []
     return jsonify(patients=[{
         "code": patient.maHienThi,
         "name": patient.hoTen,
@@ -115,9 +115,9 @@ def nurse_find_patient():
     } for patient in patients])
 
 
-@app.post("/nurse/api/lists")
-@roles_required(Role.NURSE)
-def nurse_create_exam():
+@app.post("/nurse/api/lists", endpoint="nurse_create_exam")
+@yeuCauVaiTro(Role.NURSE)
+def yTaThemLuotKham():
     try:
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
@@ -125,12 +125,12 @@ def nurse_create_exam():
         patient_code = payload.get("patient_code")
         if not isinstance(patient_code, str) or not patient_code.strip():
             return jsonify(error="Vui lòng nhập mã bệnh nhân."), 400
-        patient = dao.find_patient_by_code(patient_code)
+        patient = dao.timKiemBenhNhanTheoId(patient_code)
         if patient is None:
             return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
-        exam_date = _nurse_exam_date(payload.get("date"))
+        exam_date = _layNgayKham(payload.get("date"))
         nurse = current_user.nhanVien
-        registration = dao.create_nurse_exam(
+        registration = dao.themBenhNhan(
             exam_date=exam_date,
             patient=patient,
             nurse_id=nurse.maNV if nurse else None,
@@ -147,16 +147,16 @@ def nurse_create_exam():
         db.session.rollback()
         app.logger.exception("Nurse patient registration failed.")
         return jsonify(error="Không thể lưu lượt khám vào cơ sở dữ liệu."), 500
-    return jsonify(patient=_nurse_exam_json(registration),
+    return jsonify(patient=_chuyenLuotKhamThanhJson(registration),
                    message="Đã lưu bệnh nhân vào danh sách khám."), 201
 
 
-@app.put("/nurse/api/lists/<int:registration_id>")
-@roles_required(Role.NURSE)
-def nurse_update_exam(registration_id: int):
+@app.put("/nurse/api/lists/<int:registration_id>", endpoint="nurse_update_exam")
+@yeuCauVaiTro(Role.NURSE)
+def yTaCapNhatLuotKham(registration_id: int):
     try:
-        data = _nurse_exam_payload(request.get_json(silent=True))
-        registration = dao.update_nurse_exam(registration_id, **data)
+        data = _kiemTraDuLieuKham(request.get_json(silent=True))
+        registration = dao.capNhatLuotKham(registration_id, **data)
     except LookupError as error:
         return jsonify(error=str(error)), 404
     except ValueError as error:
@@ -166,14 +166,14 @@ def nurse_update_exam(registration_id: int):
         db.session.rollback()
         app.logger.exception("Nurse patient update failed.")
         return jsonify(error="Không thể cập nhật lượt khám trong cơ sở dữ liệu."), 500
-    return jsonify(patient=_nurse_exam_json(registration), message="Đã cập nhật bệnh nhân.")
+    return jsonify(patient=_chuyenLuotKhamThanhJson(registration), message="Đã cập nhật bệnh nhân.")
 
 
-@app.delete("/nurse/api/lists/<int:registration_id>")
-@roles_required(Role.NURSE)
-def nurse_cancel_exam(registration_id: int):
+@app.delete("/nurse/api/lists/<int:registration_id>", endpoint="nurse_cancel_exam")
+@yeuCauVaiTro(Role.NURSE)
+def yTaHuyLuotKham(registration_id: int):
     try:
-        dao.cancel_nurse_exam(registration_id)
+        dao.huyLuotKham(registration_id)
     except LookupError as error:
         return jsonify(error=str(error)), 404
     except SQLAlchemyError:
@@ -183,16 +183,16 @@ def nurse_cancel_exam(registration_id: int):
     return jsonify(message="Đã hủy lượt khám.")
 
 
-@app.post("/nurse/api/lists/<int:registration_id>/approve")
-@roles_required(Role.NURSE)
-def nurse_approve_exam(registration_id: int):
+@app.post("/nurse/api/lists/<int:registration_id>/approve", endpoint="nurse_approve_exam")
+@yeuCauVaiTro(Role.NURSE)
+def yTaDuyetLuotChoCu(registration_id: int):
     try:
         payload = request.get_json(silent=True)
-        target_date = _nurse_exam_date(
+        target_date = _layNgayKham(
             payload.get("date") if isinstance(payload, dict) else None
         )
         nurse = current_user.nhanVien
-        registration = dao.approve_waiting_nurse_exam(
+        registration = dao.duyetLuotChoCu(
             registration_id,
             target_date,
             nurse_id=nurse.maNV if nurse else None,
@@ -213,7 +213,7 @@ def nurse_approve_exam(registration_id: int):
         app.logger.exception("Nurse waiting-list approval failed.")
         return jsonify(error="Không thể duyệt bệnh nhân trong cơ sở dữ liệu."), 500
     return jsonify(
-        patient=_nurse_exam_json(registration),
+        patient=_chuyenLuotKhamThanhJson(registration),
         message=(
             "Đã duyệt bệnh nhân vào danh sách khám ngày "
             f"{registration.ngayKham.strftime('%d/%m/%Y')}."
@@ -221,14 +221,14 @@ def nurse_approve_exam(registration_id: int):
     )
 
 
-@app.post("/nurse/api/lists/confirm")
-@roles_required(Role.NURSE)
-def nurse_confirm_exam_day():
+@app.post("/nurse/api/lists/confirm", endpoint="nurse_confirm_exam_day")
+@yeuCauVaiTro(Role.NURSE)
+def yTaXacNhanDanhSach():
     try:
         payload = request.get_json(silent=True)
-        exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
+        exam_date = _layNgayKham(payload.get("date") if isinstance(payload, dict) else None)
         nurse = current_user.nhanVien
-        sms_entries = dao.confirm_nurse_exam_day(
+        sms_entries = dao.xacNhanDanhSach(
             exam_date,
             nurse_id=nurse.maNV if nurse else None,
         )
@@ -248,7 +248,7 @@ def nurse_confirm_exam_day():
         code = f"{entry.soThuTu or 0:02d}"   # phần biến, tối đa 20 ký tự
         content = f"{code} la ma xac minh dang ky Baotrixemay cua ban"
         #f"Lich kham: {exam_date.strftime('%d/%m/%Y')}, STT: {entry.soThuTu}."
-        ok, data = send_sms(patient.soDienThoai.lstrip("+"), content)
+        ok, data = guiTinNhanSms(patient.soDienThoai.lstrip("+"), content)
         if ok:
             sent += 1
         else:
@@ -258,15 +258,15 @@ def nurse_confirm_exam_day():
     return jsonify(message=f"Danh sách đã được xác nhận. Đã gửi {sent} SMS, lỗi {failed}.")
 
 
-@app.post("/nurse/api/lists/reopen")
-@roles_required(Role.NURSE)
-def nurse_reopen_exam_day():
+@app.post("/nurse/api/lists/reopen", endpoint="nurse_reopen_exam_day")
+@yeuCauVaiTro(Role.NURSE)
+def yTaMoLaiDanhSach():
     try:
         payload = request.get_json(silent=True)
-        exam_date = _nurse_exam_date(
+        exam_date = _layNgayKham(
             payload.get("date") if isinstance(payload, dict) else None
         )
-        reopened_count = dao.reopen_nurse_exam_day(exam_date)
+        reopened_count = dao.moLaiDanhSachKham(exam_date)
     except ValueError as error:
         db.session.rollback()
         return jsonify(error=str(error)), 409

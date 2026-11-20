@@ -11,9 +11,9 @@ from sqlalchemy import create_engine, inspect, text
 from app import dao, db
 from app.index import app
 from app.migration import (
-    drop_nurse_exam_profile_columns,
-    upgrade_nurse_many_to_many_schema,
-    upgrade_nurse_queue_schema,
+    xoaCotHoSoTrung,
+    nangCapCauTrucDanhSachKham,
+    nangCapCauTrucHangCho,
 )
 from app.models import BenhNhan, ChiTietDanhSachKham, DanhSachKham, QuyDinh, Role
 
@@ -32,7 +32,7 @@ class NurseQueueTests(unittest.TestCase):
             self.context.pop()
             raise RuntimeError("Nurse queue tests require DATABASE_URL=sqlite:///:memory:")
         app.config["TESTING"] = True
-        sms_mock = patch("app.routes.nurse.send_sms", return_value=(True, {}))
+        sms_mock = patch("app.routes.nurse.guiTinNhanSms", return_value=(True, {}))
         self.sms_mock = sms_mock.start()
         self.addCleanup(sms_mock.stop)
         self.previous_client_class = app.test_client_class
@@ -40,7 +40,7 @@ class NurseQueueTests(unittest.TestCase):
         db.create_all()
         self.client = app.test_client()
         self.password = "Test-password-123!"
-        self.nurse = dao.create_account({
+        self.nurse = dao.taoTaiKhoan({
             "tenDangNhap": "nurse_queue_test",
             "password": self.password,
             "role": Role.NURSE,
@@ -105,7 +105,7 @@ class NurseQueueTests(unittest.TestCase):
 
     def _legacy_waiting(self, index, exam_date):
         payload = self._patient(index, exam_date.isoformat())
-        patient = dao.find_patient_by_code(payload["patient_code"])
+        patient = dao.timKiemBenhNhanTheoId(payload["patient_code"])
         day = db.session.scalar(
             db.select(DanhSachKham).where(DanhSachKham.ngayKham == exam_date)
         )
@@ -176,7 +176,7 @@ class NurseQueueTests(unittest.TestCase):
     def test_waiting_patient_requires_a_freed_slot_before_approval(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        exam_date = dao.clinic_today().isoformat()
+        exam_date = dao.ngayHienTaiPhongKham().isoformat()
         first = self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
         waiting = self._legacy_waiting(2, date.fromisoformat(exam_date))
         first_id = first.get_json()["patient"]["id"]
@@ -207,7 +207,7 @@ class NurseQueueTests(unittest.TestCase):
     def test_waiting_list_remains_visible_and_can_move_to_selected_future_date(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        source_date = dao.clinic_today()
+        source_date = dao.ngayHienTaiPhongKham()
         target_date = source_date + timedelta(days=1)
         first = self._api(
             "POST", "/nurse/api/lists", self._patient(1, source_date.isoformat())
@@ -252,7 +252,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(target_list.get_json()["waiting"], [])
 
     def test_nurse_can_add_patient_to_a_future_exam_date(self):
-        future_date = dao.clinic_today() + timedelta(days=1)
+        future_date = dao.ngayHienTaiPhongKham() + timedelta(days=1)
         patient_payload = self._patient(1, future_date.isoformat())
         lookup = self.client.get(
             "/nurse/api/patients?q=BN-000"
@@ -293,7 +293,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(len(day.get_json()["active"]), 1)
 
     def test_confirmed_exam_day_rejects_new_patient_additions(self):
-        exam_date = dao.clinic_today()
+        exam_date = dao.ngayHienTaiPhongKham()
         first = self._api(
             "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
         )
@@ -320,7 +320,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(day["active"][0]["status"], "DA_XAC_NHAN")
 
     def test_confirmed_exam_day_can_be_reopened_and_accept_supplemental_patient(self):
-        exam_date = dao.clinic_today()
+        exam_date = dao.ngayHienTaiPhongKham()
         first = self._api(
             "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
         )
@@ -379,7 +379,7 @@ class NurseQueueTests(unittest.TestCase):
         self.sms_mock.assert_not_called()
 
     def test_reconfirming_reopened_list_resends_sms_without_new_patients(self):
-        exam_date = dao.clinic_today().isoformat()
+        exam_date = dao.ngayHienTaiPhongKham().isoformat()
         self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
         self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date})
         self._api("POST", "/nurse/api/lists/reopen", {"date": exam_date})
@@ -392,7 +392,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertIn("Đã gửi 1 SMS, lỗi 0", confirmed.get_json()["message"])
 
     def test_reconfirming_reopened_list_reports_sms_failures(self):
-        exam_date = dao.clinic_today().isoformat()
+        exam_date = dao.ngayHienTaiPhongKham().isoformat()
         self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
         self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date})
         self._api("POST", "/nurse/api/lists/reopen", {"date": exam_date})
@@ -408,7 +408,7 @@ class NurseQueueTests(unittest.TestCase):
     def test_waiting_patient_cannot_be_approved_into_confirmed_exam_day(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        exam_date = dao.clinic_today()
+        exam_date = dao.ngayHienTaiPhongKham()
         active = self._api(
             "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
         )
@@ -465,7 +465,7 @@ class NurseQueueTests(unittest.TestCase):
     def test_waiting_patient_cannot_be_approved_into_a_past_date(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        today = dao.clinic_today()
+        today = dao.ngayHienTaiPhongKham()
         self._api(
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
         )
@@ -487,13 +487,13 @@ class NurseQueueTests(unittest.TestCase):
     def test_patient_self_registration_moves_to_next_day(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        exam_date = dao.clinic_today().isoformat()
+        exam_date = dao.ngayHienTaiPhongKham().isoformat()
         accepted = self._api(
             "POST", "/nurse/api/lists", self._patient(1, exam_date=exam_date)
         )
         self.assertEqual(accepted.status_code, 201)
 
-        patient = dao.create_account({
+        patient = dao.taoTaiKhoan({
             "tenDangNhap": "patient_queue_test",
             "password": self.password,
             "role": Role.PATIENT,
@@ -523,7 +523,7 @@ class NurseQueueTests(unittest.TestCase):
         )
         self.assertIsNotNone(registration)
         self.assertEqual(registration.trangThai, "CHO_KHAM")
-        self.assertEqual(registration.ngayKham, dao.clinic_today() + timedelta(days=1))
+        self.assertEqual(registration.ngayKham, dao.ngayHienTaiPhongKham() + timedelta(days=1))
         self.assertEqual(registration.benhNhan.hoTen, patient.benhNhan.hoTen)
         self.assertEqual(registration.benhNhan.gioiTinh, patient.benhNhan.gioiTinh)
         self.assertEqual(registration.benhNhan.namSinh, patient.benhNhan.namSinh)
@@ -538,7 +538,7 @@ class NurseQueueTests(unittest.TestCase):
             "csrf_token": csrf_token,
         })
         self.assertEqual(duplicate.status_code, 409)
-        self.assertEqual(len(dao.patient_exam_registrations(patient.benhNhan.maBN)), 1)
+        self.assertEqual(len(dao.layDangKyKhamCuaBenhNhan(patient.benhNhan.maBN)), 1)
         self.assertEqual(self._api(
             "POST", "/nurse/api/lists/confirm",
             {"date": registration.ngayKham.isoformat()},
@@ -549,7 +549,7 @@ class NurseQueueTests(unittest.TestCase):
     def test_patient_registration_skips_full_and_confirmed_days(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        today = dao.clinic_today()
+        today = dao.ngayHienTaiPhongKham()
         tomorrow = today + timedelta(days=1)
         self.assertEqual(self._api(
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
@@ -562,28 +562,28 @@ class NurseQueueTests(unittest.TestCase):
         ).status_code, 200)
 
         payload = self._patient(3, today.isoformat())
-        patient = dao.find_patient_by_code(payload["patient_code"])
-        registration = dao.register_patient_exam(patient)
+        patient = dao.timKiemBenhNhanTheoId(payload["patient_code"])
+        registration = dao.dangKyKham(patient)
         self.assertEqual(registration.ngayKham, today + timedelta(days=2))
         self.assertEqual(registration.soThuTu, 1)
         self.assertEqual(registration.trangThai, "CHO_KHAM")
 
     def test_patient_registration_skips_a_confirmed_day_with_free_capacity(self):
-        today = dao.clinic_today()
+        today = dao.ngayHienTaiPhongKham()
         self.assertEqual(self._api(
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
         ).status_code, 201)
         self.assertEqual(self._api(
             "POST", "/nurse/api/lists/confirm", {"date": today.isoformat()}
         ).status_code, 200)
-        patient = dao.find_patient_by_code(self._patient(2)["patient_code"])
-        registration = dao.register_patient_exam(patient)
+        patient = dao.timKiemBenhNhanTheoId(self._patient(2)["patient_code"])
+        registration = dao.dangKyKham(patient)
         self.assertEqual(registration.ngayKham, today + timedelta(days=1))
 
     def test_legacy_waiting_migration_requires_maintenance_and_preserves_rows(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
-        today = dao.clinic_today()
+        today = dao.ngayHienTaiPhongKham()
         self.assertEqual(self._api(
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
         ).status_code, 201)
@@ -617,12 +617,12 @@ class NurseQueueTests(unittest.TestCase):
         self.assertIn("Moved 0", repeated.output)
 
     def test_legacy_waiting_migration_rolls_back_all_rows_on_failure(self):
-        today = dao.clinic_today()
+        today = dao.ngayHienTaiPhongKham()
         first = self._legacy_waiting(1, today)
         second = self._legacy_waiting(2, today)
         ids = (first.maCTDSKham, second.maCTDSKham)
-        find_slot = dao._find_next_available_exam_date
-        with patch("app.dao._find_next_available_exam_date",
+        find_slot = dao._timNgayKhamConChoGanNhat
+        with patch("app.dao._timNgayKhamConChoGanNhat",
                    side_effect=[find_slot(today), ValueError("No available date")]):
             result = app.test_cli_runner().invoke(
                 args=["move-waiting-registrations", "--maintenance"]
@@ -652,14 +652,14 @@ class NurseQueueTests(unittest.TestCase):
             "trangThai": True,
             "chuyenKhoa": "Nội khoa",
         }
-        dao.create_account(doctor_data)
+        dao.taoTaiKhoan(doctor_data)
         doctor_client = app.test_client()
         self._sign_in(doctor_client, "doctor_queue_test")
         response = doctor_client.get("/nurse/api/lists?date=2026-11-14")
         self.assertEqual(response.status_code, 403)
 
     def test_confirmed_list_history_has_its_own_nurse_page(self):
-        today = dao.clinic_today()
+        today = dao.ngayHienTaiPhongKham()
         future_date = today + timedelta(days=1)
         first = self._api(
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
@@ -701,7 +701,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(second.status_code, 201)
         self.assertEqual(unconfirmed.status_code, 201)
 
-        patient = dao.create_account({
+        patient = dao.taoTaiKhoan({
             "tenDangNhap": "history_forbidden_patient",
             "password": self.password,
             "role": Role.PATIENT,
@@ -770,10 +770,10 @@ class NurseQueueMigrationTests(unittest.TestCase):
                 '"2026-11-14 09:00:00", "DA_HUY")'
             )
 
-        self.assertTrue(upgrade_nurse_queue_schema(engine))
-        self.assertFalse(upgrade_nurse_queue_schema(engine))
-        self.assertTrue(upgrade_nurse_many_to_many_schema(engine))
-        self.assertFalse(upgrade_nurse_many_to_many_schema(engine))
+        self.assertTrue(nangCapCauTrucHangCho(engine))
+        self.assertFalse(nangCapCauTrucHangCho(engine))
+        self.assertTrue(nangCapCauTrucDanhSachKham(engine))
+        self.assertFalse(nangCapCauTrucDanhSachKham(engine))
         columns = {column["name"]: column for column in inspect(engine).get_columns("BenhNhan")}
         self.assertTrue(columns["MaTK"]["nullable"])
         table_names = set(inspect(engine).get_table_names())
@@ -837,8 +837,8 @@ class NurseQueueMigrationTests(unittest.TestCase):
                 '"CHO_KHAM", "Bệnh nhân", "Nữ", 1990, "Địa chỉ")'
             )
 
-        self.assertTrue(drop_nurse_exam_profile_columns(engine))
-        self.assertFalse(drop_nurse_exam_profile_columns(engine))
+        self.assertTrue(xoaCotHoSoTrung(engine))
+        self.assertFalse(xoaCotHoSoTrung(engine))
         columns = {
             column["name"]
             for column in inspect(engine).get_columns("ChiTietDanhSachKham")

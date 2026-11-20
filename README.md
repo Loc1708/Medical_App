@@ -63,12 +63,17 @@ Medical_App\
 
 Đợt hiện tại triển khai tài khoản/hồ sơ và luồng bác sĩ (tra cứu bệnh nhân,
 lịch sử khám, tra cứu thuốc, lưu nháp và lập phiếu), quản lý thuốc/đơn vị,
-quy định và báo cáo tháng. Luồng thanh toán chưa triển khai trong code hiện tại.
+quy định, báo cáo tháng và thanh toán.
 Không tạo lại các thư mục `controllers`, `models`, `services` của bộ khung cũ.
 Controller được thể hiện bằng các hàm route trong `index.py` và `routes\` theo vai trò;
 truy cập dữ liệu ở `dao.py`. JavaScript chung nằm trong `static/js/main.js`;
 mỗi vai trò có file riêng (bác sĩ `doctor.js`, y tá `nurse.js`, thu ngân `cashier.js`),
 các thao tác quản trị tài khoản nằm trong `static/js/admin/accounts.js`.
+Các hàm DAO chính dùng tên gần với sơ đồ lớp, ví dụ `dangKyKham`,
+`xacNhanDanhSach`, `lapPhieuKham`, `themThuoc` và `suaThuoc`. Chúng là hàm
+trong DAO, không phải phương thức của các lớp entity trên sơ đồ.
+Các hàm do ứng dụng định nghĩa được đặt tên tiếng Việt không dấu. Tên bắt buộc
+theo Flask-Login, tên endpoint, lệnh CLI và tên kiểm thử được giữ để tương thích.
 Frontend dùng HTML/Jinja2, Bootstrap 5.0.2 và JavaScript thuần; không có npm build.
 Logo trên header và favicon của các trang dùng chung biểu tượng
 `static\images\2.png`.

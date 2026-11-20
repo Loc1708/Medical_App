@@ -6,7 +6,7 @@
     </a>
     <div class="header-actions">
         {% if not (database_unavailable|default(false)) and current_user.is_authenticated %}
-        <div class="text-end"><strong>{{ current_user.hoTen }}</strong><small class="d-block">{{ current_user.role.label }}</small></div>
+        <div class="text-end"><strong>{{ current_user.hoTen }}</strong><small class="d-block">{{ current_user.role.tenVaiTro }}</small></div>
         <form action="{{ url_for('logout') }}" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="btn btn-outline-primary btn-sm">Đăng xuất</button>

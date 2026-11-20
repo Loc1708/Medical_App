@@ -1,4 +1,4 @@
-function updateRoleFields(root = document) {
+function capNhatTruongTheoVaiTro(root = document) {
     const selector = root.querySelector("[data-role-select]");
     const selected = selector ? selector.value : "PATIENT";
     const phone = root.querySelector("#phone");
@@ -15,16 +15,16 @@ function updateRoleFields(root = document) {
 
 document.addEventListener("change", event => {
     if (event.target.matches("[data-role-select]")) {
-        updateRoleFields(event.target.closest("form"));
+        capNhatTruongTheoVaiTro(event.target.closest("form"));
     }
 });
-updateRoleFields();
+capNhatTruongTheoVaiTro();
 const modalElement = document.querySelector("#account-modal");
 if (modalElement) {
     const content = modalElement.querySelector(".modal-content");
     const errorBox = document.querySelector("#modal-error");
     let loading = false;
-    function showError(message) {
+    function hienThiLoi(message) {
         errorBox.textContent = message;
         errorBox.hidden = false;
         errorBox.scrollIntoView({ block: "nearest" });
@@ -46,10 +46,10 @@ if (modalElement) {
             }
             if (!response.ok) throw new Error("Không tải được biểu mẫu. Vui lòng tải lại trang hoặc thử lại.");
             content.innerHTML = await response.text();
-            updateRoleFields(content);
+            capNhatTruongTheoVaiTro(content);
             bootstrap.Modal.getOrCreateInstance(modalElement).show();
         } catch (error) {
-            showError(error.message);
+            hienThiLoi(error.message);
         } finally {
             loading = false;
         }
@@ -71,13 +71,13 @@ if (modalElement) {
                 window.location.reload();
             } else if (response.status === 422) {
                 content.innerHTML = await response.text();
-                updateRoleFields(content);
+                capNhatTruongTheoVaiTro(content);
                 content.querySelector("[role='alert']")?.scrollIntoView({ block: "nearest" });
             } else {
                 throw new Error("Không lưu được tài khoản. Vui lòng kiểm tra kết quả trước khi thử lại.");
             }
         } catch (error) {
-            showError(error.message);
+            hienThiLoi(error.message);
             bootstrap.Modal.getInstance(modalElement)?.hide();
         } finally {
             button.disabled = false;

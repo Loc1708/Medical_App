@@ -63,7 +63,7 @@ if (doctorStatus) {
         if (draftDirty && selectedPatientCode) {
             window.clearTimeout(autosaveTimer);
             if (!autosaveRequestActive) {
-                autosaveInFlight = saveExam(null, "NHAP", { silent: true });
+                autosaveInFlight = lapPhieuKham(null, "NHAP", { silent: true });
             }
         }
         const discardedDraft = currentDraftId !== null;
@@ -590,7 +590,7 @@ if (doctorStatus) {
             autosaveInFlight = autosaveInFlight.then(() => {
                 if (!draftDirty) return true;
                 autosaveRequestActive = true;
-                return saveExam(null, "NHAP", { silent: true }).finally(() => {
+                return lapPhieuKham(null, "NHAP", { silent: true }).finally(() => {
                     autosaveRequestActive = false;
                 });
             });
@@ -606,7 +606,7 @@ if (doctorStatus) {
             return;
         }
         autosaveRequestActive = true;
-        autosaveInFlight = saveExam(null, "NHAP", {
+        autosaveInFlight = lapPhieuKham(null, "NHAP", {
             silent: true, keepalive: true,
         }).finally(() => {
             autosaveRequestActive = false;
@@ -722,13 +722,13 @@ if (doctorStatus) {
             return;
         }
         if (saveDraftButton) {
-            saveExam(saveDraftButton, "NHAP");
+            lapPhieuKham(saveDraftButton, "NHAP");
             return;
         }
-        if (saveExamButton) saveExam(saveExamButton, "DA_LAP");
+        if (saveExamButton) lapPhieuKham(saveExamButton, "DA_LAP");
     });
 
-    async function saveExam(button, status, { silent = false, keepalive = false } = {}) {
+    async function lapPhieuKham(button, status, { silent = false, keepalive = false } = {}) {
         if (status === "DA_LAP" || (status === "NHAP" && !silent)) {
             window.clearTimeout(autosaveTimer);
             await autosaveInFlight;

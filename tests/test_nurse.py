@@ -1,7 +1,8 @@
 import unittest
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from flask import g
 from flask.testing import FlaskClient
@@ -31,6 +32,9 @@ class NurseQueueTests(unittest.TestCase):
             self.context.pop()
             raise RuntimeError("Nurse queue tests require DATABASE_URL=sqlite:///:memory:")
         app.config["TESTING"] = True
+        sms_mock = patch("app.routes.nurse.send_sms", return_value=(True, {}))
+        self.sms_mock = sms_mock.start()
+        self.addCleanup(sms_mock.stop)
         self.previous_client_class = app.test_client_class
         app.test_client_class = AuthClient
         db.create_all()
@@ -99,22 +103,40 @@ class NurseQueueTests(unittest.TestCase):
             "patient_code": patient.maHienThi,
         }
 
+    def _legacy_waiting(self, index, exam_date):
+        payload = self._patient(index, exam_date.isoformat())
+        patient = dao.find_patient_by_code(payload["patient_code"])
+        day = db.session.scalar(
+            db.select(DanhSachKham).where(DanhSachKham.ngayKham == exam_date)
+        )
+        if day is None:
+            day = DanhSachKham(ngayKham=exam_date)
+        registration = ChiTietDanhSachKham(
+            danhSachKham=day, benhNhan=patient, ngayKham=exam_date,
+            ngayDangKy=datetime.now(), trangThai="CHO_DUYET",
+        )
+        db.session.add(registration)
+        db.session.commit()
+        return registration
+
     def test_nurse_dashboard_explains_finalized_day_restrictions(self):
         response = self.client.get("/dashboard")
         html = response.get_data(as_text=True)
         self.assertEqual(response.status_code, 200)
         self.assertIn("data-day-locked-warning", html)
         self.assertIn(
-            "không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này",
+            "không thể thêm bệnh nhân vào ngày này",
             html,
         )
 
-    def test_forty_first_patient_is_persisted_in_waiting_list(self):
+    def test_nurse_cannot_add_patient_to_full_day(self):
         responses = [
             self._api("POST", "/nurse/api/lists", self._patient(index))
             for index in range(1, 42)
         ]
-        self.assertTrue(all(response.status_code == 201 for response in responses))
+        self.assertTrue(all(response.status_code == 201 for response in responses[:40]))
+        self.assertEqual(responses[-1].status_code, 409)
+        self.assertIn("đã đủ chỗ", responses[-1].get_json()["error"])
         accepted = db.session.scalars(
             db.select(ChiTietDanhSachKham).where(
                 ChiTietDanhSachKham.trangThai == "CHO_KHAM"
@@ -131,7 +153,7 @@ class NurseQueueTests(unittest.TestCase):
             )
         )
         self.assertEqual(len(accepted), 40)
-        self.assertEqual(len(waiting), 1)
+        self.assertEqual(len(waiting), 0)
         self.assertEqual(
             db.session.scalar(
                 db.select(db.func.count()).select_from(DanhSachKham)
@@ -139,20 +161,16 @@ class NurseQueueTests(unittest.TestCase):
             1,
         )
         self.assertEqual(
-            {entry.maDSKham for entry in [*accepted, *waiting]},
+            {entry.maDSKham for entry in accepted},
             {exam_day.maDSKham},
         )
-        self.assertEqual(len(exam_day.benhNhans), 41)
+        self.assertEqual(len(exam_day.benhNhans), 40)
         self.assertEqual(exam_day.maNV, self.nurse.nhanVien.maNV)
-        self.assertEqual(waiting[0].soThuTu, None)
-        self.assertEqual(waiting[0].benhNhan.maTK, None)
-        self.assertEqual(waiting[0].ngayKham, date(2026, 11, 14))
-        self.assertIn("hàng chờ", responses[-1].get_json()["message"])
 
         page = self._api("GET", "/nurse/api/lists?date=2026-11-14")
         self.assertEqual(page.status_code, 200)
         self.assertEqual(len(page.get_json()["active"]), 40)
-        self.assertEqual(len(page.get_json()["waiting"]), 1)
+        self.assertEqual(len(page.get_json()["waiting"]), 0)
         self.assertEqual(page.get_json()["limit"], 40)
 
     def test_waiting_patient_requires_a_freed_slot_before_approval(self):
@@ -160,9 +178,9 @@ class NurseQueueTests(unittest.TestCase):
         db.session.commit()
         exam_date = dao.clinic_today().isoformat()
         first = self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
-        waiting = self._api("POST", "/nurse/api/lists", self._patient(2, exam_date))
+        waiting = self._legacy_waiting(2, date.fromisoformat(exam_date))
         first_id = first.get_json()["patient"]["id"]
-        waiting_id = waiting.get_json()["patient"]["id"]
+        waiting_id = waiting.maCTDSKham
 
         blocked = self._api(
             "POST", f"/nurse/api/lists/{waiting_id}/approve", {"date": exam_date}
@@ -194,12 +212,9 @@ class NurseQueueTests(unittest.TestCase):
         first = self._api(
             "POST", "/nurse/api/lists", self._patient(1, source_date.isoformat())
         )
-        waiting = self._api(
-            "POST", "/nurse/api/lists", self._patient(2, source_date.isoformat())
-        )
+        waiting = self._legacy_waiting(2, source_date)
         self.assertEqual(first.status_code, 201)
-        self.assertEqual(waiting.status_code, 201)
-        waiting_id = waiting.get_json()["patient"]["id"]
+        waiting_id = waiting.maCTDSKham
 
         target_list = self._api(
             "GET", f"/nurse/api/lists?date={target_date.isoformat()}"
@@ -304,6 +319,92 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(len(day["active"]), 1)
         self.assertEqual(day["active"][0]["status"], "DA_XAC_NHAN")
 
+    def test_confirmed_exam_day_can_be_reopened_and_accept_supplemental_patient(self):
+        exam_date = dao.clinic_today()
+        first = self._api(
+            "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
+        )
+        self.assertEqual(first.status_code, 201)
+        confirmed = self._api(
+            "POST",
+            "/nurse/api/lists/confirm",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(confirmed.status_code, 200)
+
+        reopened = self._api(
+            "POST",
+            "/nurse/api/lists/reopen",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(reopened.status_code, 200)
+
+        supplemental = self._api(
+            "POST", "/nurse/api/lists", self._patient(2, exam_date.isoformat())
+        )
+        self.assertEqual(supplemental.status_code, 201)
+
+        day = self._api(
+            "GET", f"/nurse/api/lists?date={exam_date.isoformat()}"
+        ).get_json()
+        statuses = {entry["status"] for entry in day["active"]}
+        self.assertIn("DA_MO_LAI", statuses)
+        self.assertIn("CHO_KHAM", statuses)
+        self.assertFalse(day["confirmed"])
+
+        self.sms_mock.reset_mock()
+        final_confirm = self._api(
+            "POST",
+            "/nurse/api/lists/confirm",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(final_confirm.status_code, 200)
+        self.assertEqual(self.sms_mock.call_count, 2)
+        self.assertEqual(
+            {call.args[0] for call in self.sms_mock.call_args_list},
+            {first.get_json()["patient"]["phone"],
+             supplemental.get_json()["patient"]["phone"]},
+        )
+        self.assertIn("Đã gửi 2 SMS, lỗi 0", final_confirm.get_json()["message"])
+        final_day = self._api(
+            "GET", f"/nurse/api/lists?date={exam_date.isoformat()}"
+        ).get_json()
+        self.assertTrue(final_day["confirmed"])
+        self.assertTrue(all(
+            entry["status"] == "DA_XAC_NHAN"
+            for entry in final_day["active"]
+        ))
+        self.sms_mock.reset_mock()
+        self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date.isoformat()})
+        self.sms_mock.assert_not_called()
+
+    def test_reconfirming_reopened_list_resends_sms_without_new_patients(self):
+        exam_date = dao.clinic_today().isoformat()
+        self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
+        self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date})
+        self._api("POST", "/nurse/api/lists/reopen", {"date": exam_date})
+        self.sms_mock.reset_mock()
+
+        confirmed = self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date})
+
+        self.assertEqual(confirmed.status_code, 200)
+        self.sms_mock.assert_called_once()
+        self.assertIn("Đã gửi 1 SMS, lỗi 0", confirmed.get_json()["message"])
+
+    def test_reconfirming_reopened_list_reports_sms_failures(self):
+        exam_date = dao.clinic_today().isoformat()
+        self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
+        self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date})
+        self._api("POST", "/nurse/api/lists/reopen", {"date": exam_date})
+        self.sms_mock.reset_mock()
+        self.sms_mock.return_value = (False, {"error": "test failure"})
+
+        confirmed = self._api("POST", "/nurse/api/lists/confirm", {"date": exam_date})
+
+        self.assertEqual(confirmed.status_code, 200)
+        self.sms_mock.assert_called_once()
+        self.assertIn("Đã gửi 0 SMS, lỗi 1", confirmed.get_json()["message"])
+
     def test_waiting_patient_cannot_be_approved_into_confirmed_exam_day(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
@@ -311,12 +412,9 @@ class NurseQueueTests(unittest.TestCase):
         active = self._api(
             "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
         )
-        waiting = self._api(
-            "POST", "/nurse/api/lists", self._patient(2, exam_date.isoformat())
-        )
+        waiting = self._legacy_waiting(2, exam_date)
         self.assertEqual(active.status_code, 201)
-        self.assertEqual(waiting.status_code, 201)
-        waiting_id = waiting.get_json()["patient"]["id"]
+        waiting_id = waiting.maCTDSKham
         self._api(
             "POST",
             "/nurse/api/lists/confirm",
@@ -371,11 +469,8 @@ class NurseQueueTests(unittest.TestCase):
         self._api(
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
         )
-        waiting_response = self._api(
-            "POST", "/nurse/api/lists", self._patient(2, today.isoformat())
-        )
-        self.assertEqual(waiting_response.status_code, 201)
-        registration_id = waiting_response.get_json()["patient"]["id"]
+        waiting = self._legacy_waiting(2, today)
+        registration_id = waiting.maCTDSKham
 
         past_date = (today - timedelta(days=1)).isoformat()
         rejected = self._api(
@@ -389,7 +484,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(registration.trangThai, "CHO_DUYET")
         self.assertEqual(registration.ngayKham, today)
 
-    def test_patient_self_registration_also_uses_the_waiting_queue(self):
+    def test_patient_self_registration_moves_to_next_day(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
         exam_date = dao.clinic_today().isoformat()
@@ -427,17 +522,119 @@ class NurseQueueTests(unittest.TestCase):
             )
         )
         self.assertIsNotNone(registration)
-        self.assertEqual(registration.trangThai, "CHO_DUYET")
+        self.assertEqual(registration.trangThai, "CHO_KHAM")
+        self.assertEqual(registration.ngayKham, dao.clinic_today() + timedelta(days=1))
         self.assertEqual(registration.benhNhan.hoTen, patient.benhNhan.hoTen)
         self.assertEqual(registration.benhNhan.gioiTinh, patient.benhNhan.gioiTinh)
         self.assertEqual(registration.benhNhan.namSinh, patient.benhNhan.namSinh)
         self.assertEqual(registration.benhNhan.diaChi, patient.benhNhan.diaChi)
         self.assertIsNotNone(registration.danhSachKham)
-        self.assertEqual(registration.danhSachKham.maNV, self.nurse.nhanVien.maNV)
+        self.assertIsNone(registration.danhSachKham.maNV)
         page = patient_client.get("/dashboard")
         page_html = page.get_data(as_text=True)
-        self.assertIn("Chờ y tá duyệt", page_html)
+        self.assertIn("ngày gần nhất còn chỗ", page_html)
         self.assertNotIn(registration.ngayKham.strftime("%d/%m/%Y"), page_html)
+        duplicate = patient_client.post("/patient/exam-registrations", data={
+            "csrf_token": csrf_token,
+        })
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertEqual(len(dao.patient_exam_registrations(patient.benhNhan.maBN)), 1)
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists/confirm",
+            {"date": registration.ngayKham.isoformat()},
+        ).status_code, 200)
+        confirmed_html = patient_client.get("/dashboard").get_data(as_text=True)
+        self.assertIn(registration.ngayKham.strftime("%d/%m/%Y"), confirmed_html)
+
+    def test_patient_registration_skips_full_and_confirmed_days(self):
+        self.limit.giaTri = Decimal("1")
+        db.session.commit()
+        today = dao.clinic_today()
+        tomorrow = today + timedelta(days=1)
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
+        ).status_code, 201)
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists", self._patient(2, tomorrow.isoformat())
+        ).status_code, 201)
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists/confirm", {"date": tomorrow.isoformat()}
+        ).status_code, 200)
+
+        payload = self._patient(3, today.isoformat())
+        patient = dao.find_patient_by_code(payload["patient_code"])
+        registration = dao.register_patient_exam(patient)
+        self.assertEqual(registration.ngayKham, today + timedelta(days=2))
+        self.assertEqual(registration.soThuTu, 1)
+        self.assertEqual(registration.trangThai, "CHO_KHAM")
+
+    def test_patient_registration_skips_a_confirmed_day_with_free_capacity(self):
+        today = dao.clinic_today()
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
+        ).status_code, 201)
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists/confirm", {"date": today.isoformat()}
+        ).status_code, 200)
+        patient = dao.find_patient_by_code(self._patient(2)["patient_code"])
+        registration = dao.register_patient_exam(patient)
+        self.assertEqual(registration.ngayKham, today + timedelta(days=1))
+
+    def test_legacy_waiting_migration_requires_maintenance_and_preserves_rows(self):
+        self.limit.giaTri = Decimal("1")
+        db.session.commit()
+        today = dao.clinic_today()
+        self.assertEqual(self._api(
+            "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
+        ).status_code, 201)
+        first = self._legacy_waiting(2, today)
+        second = self._legacy_waiting(3, today - timedelta(days=1))
+        first_id, second_id = first.maCTDSKham, second.maCTDSKham
+        original_data = {
+            row.maCTDSKham: (row.maBN, row.ngayDangKy)
+            for row in (first, second)
+        }
+
+        runner = app.test_cli_runner()
+        refused = runner.invoke(args=["move-waiting-registrations"])
+        self.assertNotEqual(refused.exit_code, 0)
+        self.assertEqual(first.trangThai, "CHO_DUYET")
+
+        result = runner.invoke(args=["move-waiting-registrations", "--maintenance"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Moved 2", result.output)
+        db.session.expire_all()
+        moved = [db.session.get(ChiTietDanhSachKham, row_id)
+                 for row_id in (first_id, second_id)]
+        self.assertEqual({row.ngayKham for row in moved},
+                         {today + timedelta(days=1), today + timedelta(days=2)})
+        self.assertTrue(all(row.trangThai == "CHO_KHAM" and row.soThuTu == 1
+                            for row in moved))
+        self.assertTrue(all((row.maBN, row.ngayDangKy) == original_data[row.maCTDSKham]
+                            for row in moved))
+        repeated = runner.invoke(args=["move-waiting-registrations", "--maintenance"])
+        self.assertEqual(repeated.exit_code, 0, repeated.output)
+        self.assertIn("Moved 0", repeated.output)
+
+    def test_legacy_waiting_migration_rolls_back_all_rows_on_failure(self):
+        today = dao.clinic_today()
+        first = self._legacy_waiting(1, today)
+        second = self._legacy_waiting(2, today)
+        ids = (first.maCTDSKham, second.maCTDSKham)
+        find_slot = dao._find_next_available_exam_date
+        with patch("app.dao._find_next_available_exam_date",
+                   side_effect=[find_slot(today), ValueError("No available date")]):
+            result = app.test_cli_runner().invoke(
+                args=["move-waiting-registrations", "--maintenance"]
+            )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("No available date", result.output)
+        db.session.expire_all()
+        for row_id in ids:
+            row = db.session.get(ChiTietDanhSachKham, row_id)
+            self.assertEqual(row.trangThai, "CHO_DUYET")
+            self.assertIsNone(row.soThuTu)
+            self.assertEqual(row.ngayKham, today)
 
     def test_nurse_endpoints_enforce_role_and_csrf(self):
         missing_csrf = self.client.post(

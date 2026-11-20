@@ -178,12 +178,22 @@ và mỗi lượt bệnh nhân thành một dòng `ChiTietDanhSachKham`. Trạng
 và thời điểm đăng ký được giữ ở bảng chi tiết; hồ sơ bệnh nhân được tham chiếu
 bằng `MaBN`. Các dòng cũ được sao chép và kiểm tra; bảng cũ được giữ nguyên với tên
 `DanhSachKham_legacy`. `MaNV` để trống cho đến khi y tá thao tác với danh sách ngày.
-Mỗi ngày danh sách chính nhận tối đa theo `SO_BENH_NHAN_TOI_DA`; lượt vượt giới hạn
-được lưu với trạng thái `CHO_DUYET`. Chỉ duyệt từ hôm nay trở đi và khi ngày đích
-còn chỗ. Hủy lượt khám giải phóng chỗ nhưng vẫn giữ bản ghi trạng thái `DA_HUY`.
+Ở dữ liệu cũ, lượt vượt giới hạn có thể mang trạng thái `CHO_DUYET`.
 Nếu migration báo lỗi và để lại `_DanhSachKham_m2m` hoặc
 `_ChiTietDanhSachKham_m2m`, hãy kiểm tra database trước khi chạy lại; không tự xóa
 các bảng này hay bảng backup.
+
+Nếu database còn lượt `CHO_DUYET` cũ, sao lưu database và dừng tất cả server,
+tiến trình đang ghi trước khi chạy riêng lệnh sau (không tự chạy khi khởi động):
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app move-waiting-registrations --maintenance
+```
+
+Lệnh giữ nguyên mã và thời điểm đăng ký, chuyển từng lượt từ hôm nay hoặc ngày
+đăng ký khám cũ (ngày nào muộn hơn) sang ngày gần nhất còn chỗ, chưa chốt và
+không trùng lượt hoạt động của bệnh nhân. Lệnh có thể chạy lại; kiểm tra kết quả
+trước khi khởi động ứng dụng. Không gửi SMS trong bước chuyển dữ liệu.
 
 Với database đang có bốn cột hồ sơ trùng trong `ChiTietDanhSachKham`, dừng ứng dụng,
 sao lưu database và chạy migration:
@@ -302,11 +312,11 @@ Thư mục `.venv`, `instance`, các tệp `.env` và Python cache được Git 
   kiểm tra đầu vào và transaction; không cho phép chỉ dựa vào menu để kiểm soát quyền.
 - Giao diện có header, sidebar, footer chung và thư mục riêng theo từng role.
   Trang y tá có thể tra cứu và thêm bệnh nhân theo mã hồ sơ đã có, hủy lượt khám,
-  duyệt bệnh nhân chờ, tìm kiếm, chọn ngày, phân trang và xác nhận
-  danh sách đã lưu; danh sách chính và hàng chờ được lưu vào database, chưa gửi SMS.
-  Hàng chờ hiển thị trên mọi ngày đang chọn; y tá có thể chuyển lượt chờ sang ngày
-  từ hôm nay trở đi nếu ngày đó còn chỗ. Khi đã có lượt được xác nhận, ngày khám
-  được chốt và không nhận thêm lượt đăng ký hoặc duyệt lượt chờ vào ngày đó.
+  tìm kiếm, chọn ngày, phân trang và xác nhận danh sách đã lưu. Khi y tá xác nhận,
+  ứng dụng thử gửi SMS cho bệnh nhân; khi mở lại và xác nhận lại, SMS được gửi
+  lại cho các bệnh nhân trong danh sách. Kết quả phụ thuộc cấu hình dịch vụ SMS.
+  Khi đã có lượt được xác nhận, ngày khám được chốt và không nhận thêm đăng ký.
+  Y tá phải chọn ngày khác khi thêm trực tiếp vào ngày đã đầy.
   Nghiệp vụ thu ngân chưa được triển khai.
 
 Tài khoản quản trị khởi tạo riêng cho máy này có thông tin trong
@@ -362,21 +372,25 @@ quy trình khôi phục mật khẩu trước khi công khai dịch vụ trên I
   đang đăng nhập.
   Model hóa đơn đã ánh xạ bảng thật để truy vấn báo cáo. Bệnh nhân có thể
   đăng ký và xem trạng thái lượt đăng ký của mình; y tá quản lý danh sách theo ngày
-  trong database, duyệt lượt vượt giới hạn từ hàng chờ vào ngày đã chọn khi còn chỗ.
+  trong database.
 - Điểm đã báo để nhóm sửa thiết kế: `NhanVien.capNhatThongTin(quyDinh): QuyDinh`
   không khớp tên thao tác; `HoaDon.inHoaDon(): Double` không khớp việc xuất bản in.
   Chưa triển khai các chữ ký này hay tự đổi chúng trong code.
 - `BenhNhan.dangKyKham()` trong sơ đồ là đăng ký lượt khám, không phải đăng ký tài khoản.
   Luồng đăng ký lượt khám dùng `/patient/exam-registrations`, không gán nhầm
-  vào `/register`. Giới hạn tiếp nhận áp dụng vào luồng đăng ký này; lượt vượt giới hạn
-  được lưu vào hàng chờ để y tá duyệt.
+  vào `/register`. Nếu hôm nay đầy hoặc đã chốt, lượt đăng ký được xếp tự động
+  vào ngày gần nhất còn chỗ và chưa chốt. Mỗi bệnh nhân chỉ đăng ký khi chưa có
+  lượt hoạt động từ hôm nay trở đi. Ngày khám chỉ hiển thị sau khi y tá xác nhận.
+  Hủy lượt khám giải phóng chỗ nhưng vẫn giữ bản ghi `DA_HUY`.
 
 ## Kiểm tra
 
 ```powershell
 $env:DATABASE_URL = "sqlite:///:memory:"
+$env:SMS_MODE = "mock"
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 Remove-Item Env:\DATABASE_URL
+Remove-Item Env:\SMS_MODE
 ```
 
 Thiết lập SQLite trên chỉ dành cho kiểm tra local, không truy cập TiDB.

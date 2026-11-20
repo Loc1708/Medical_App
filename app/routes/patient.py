@@ -81,9 +81,9 @@ def patient_register_exam():
         db.session.rollback()
         flash(str(error), "danger")
         return render_patient_dashboard(status=409)
-    if registration.trangThai == "CHO_DUYET":
+    if registration.ngayKham > dao.clinic_today():
         flash(
-            "Đã nhận đăng ký. Danh sách đủ chỗ; hồ sơ đang chờ y tá duyệt.",
+            "Danh sách hôm nay đã đầy hoặc đã chốt. Hồ sơ được chuyển sang ngày gần nhất còn chỗ; ngày khám sẽ hiển thị sau khi y tá xác nhận.",
             "success",
         )
     else:

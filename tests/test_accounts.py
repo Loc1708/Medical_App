@@ -282,11 +282,8 @@ class AccountTests(unittest.TestCase):
                 self.assertIn('data-patient-lookup-form', page_html)
                 self.assertNotIn('data-patient-form', page_html)
                 self.assertIn("/static/js/nurse.js", page_html)
-                self.assertIn('data-waiting-rows', page_html)
-                self.assertLess(
-                    page_html.index('data-waiting-rows'),
-                    page_html.index('data-patient-rows'),
-                )
+                self.assertNotIn('data-waiting-rows', page_html)
+                self.assertIn('data-patient-rows', page_html)
                 self.assertNotIn("data-preview-control", page_html)
 
     def test_doctor_dashboard_matches_consultation_mockup_without_fake_records(self):

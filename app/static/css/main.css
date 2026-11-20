@@ -158,7 +158,6 @@ main { flex: 1; }
 .nurse-status { padding: 12px 16px; border: 1px solid #bbdcd4; border-radius: 10px; background: #edf8f5; color: var(--primary); font-size: .9rem; }
 .nurse-status.is-error { border-color: #e7b6b2; background: #fff4f3; color: #8c2821; }
 .nurse-status.is-success { border-color: #b6d9c2; background: #edf9f1; color: #24644d; }
-.nurse-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.8fr); gap: 20px; align-items: stretch; }
 .nurse-panel { min-width: 0; }
 .nurse-panel-heading { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 22px; }
 .nurse-panel-heading p { font-size: .85rem; }
@@ -201,7 +200,6 @@ main { flex: 1; }
     .doctor-search-row { flex-wrap: wrap; }
     .doctor-search-row .form-control { flex-basis: 100%; }
     .doctor-patient-card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .nurse-workspace-grid { grid-template-columns: 1fr; }
     .nurse-date-panel, .nurse-date-control, .nurse-list-footer { align-items: stretch; flex-direction: column; }
     .nurse-date-control .form-control { width: 100%; }
     .nurse-patient-lookup-row { align-items: stretch; flex-direction: column; }

@@ -228,6 +228,26 @@ def upgrade_nurse_many_to_many_schema() -> None:
         click.echo("Nurse many-to-many schema already exists; no changes made.")
 
 
+@app.cli.command("move-waiting-registrations")
+@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
+def move_waiting_registrations_command(maintenance: bool) -> None:
+    """Move legacy waiting registrations to the next available exam day."""
+    from app.dao import migrate_waiting_registrations
+
+    if not maintenance:
+        raise click.ClickException("Stop all application writers and pass --maintenance.")
+    try:
+        moved = migrate_waiting_registrations()
+    except ValueError as error:
+        db.session.rollback()
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Waiting registration migration failed.")
+        raise click.ClickException("Could not move waiting registrations; see application log.") from None
+    click.echo(f"Moved {moved} waiting registration(s).")
+
+
 @app.cli.command("drop-nurse-exam-profile-columns")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
 def drop_nurse_exam_profile_columns_command(maintenance: bool) -> None:

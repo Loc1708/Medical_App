@@ -12,22 +12,18 @@ if (nurseApp) {
     const searchForm = nurseApp.querySelector("[data-search-form]");
     const searchInput = nurseApp.querySelector("#nurse-search");
     const patientRows = nurseApp.querySelector("[data-patient-rows]");
-    const waitingRows = nurseApp.querySelector("[data-waiting-rows]");
     const pagination = nurseApp.querySelector("[data-pagination]");
-    const waitingPagination = nurseApp.querySelector("[data-waiting-pagination]");
     const listSummary = nurseApp.querySelector("[data-list-summary]");
-    const waitingSummary = nurseApp.querySelector("[data-waiting-summary]");
     const patientCount = nurseApp.querySelector("[data-patient-count]");
-    const waitingCount = nurseApp.querySelector("[data-waiting-count]");
-    const approvalTarget = nurseApp.querySelector("[data-approval-target]");
+    const legacyWaitingWarning = nurseApp.querySelector("[data-legacy-waiting-warning]");
     const status = nurseApp.querySelector("[data-nurse-status]");
     const confirmedStatus = nurseApp.querySelector("[data-confirmed-status]");
     const confirmButton = nurseApp.querySelector("[data-confirm-list]");
+    const reopenButton = nurseApp.querySelector("[data-reopen-list]");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     let selectedDate = "";
     let clinicToday = todayValue();
     let currentPage = 1;
-    let currentWaitingPage = 1;
     let searchTerm = "";
     let dailyLimit = 0;
     let patientSearchTimer = null;
@@ -35,7 +31,6 @@ if (nurseApp) {
     let matchedPatients = [];
     let matchedPatient = null;
     let activePatients = [];
-    let waitingPatients = [];
     let dayConfirmed = false;
     let dayLocked = false;
 
@@ -95,7 +90,10 @@ if (nurseApp) {
         dailyLimit = data.limit;
         clinicToday = data.today;
         activePatients = data.active;
-        waitingPatients = data.waiting;
+        legacyWaitingWarning.hidden = data.waiting.length === 0;
+        legacyWaitingWarning.textContent = data.waiting.length
+            ? `Còn ${data.waiting.length} lượt chờ cũ chưa được chuyển lịch. Hãy liên hệ quản trị viên.`
+            : "";
         dayConfirmed = data.confirmed;
         dayLocked = data.locked;
         nurseApp.dataset.maxPatients = String(dailyLimit);
@@ -262,8 +260,8 @@ if (nurseApp) {
         dayLockedWarning.hidden = !dayLocked;
         if (dayLocked) {
             dayLockedWarning.textContent = dayConfirmed
-                ? `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt. Không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này.`
-                : `Ngày ${formatDate(selectedDate)} đã có lượt được xác nhận; không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này. Hãy xác nhận các lượt còn lại để hoàn tất.`;
+                ? `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt. Không thể thêm bệnh nhân vào ngày này.`
+                : `Ngày ${formatDate(selectedDate)} đã có lượt được xác nhận; không thể thêm bệnh nhân vào ngày này. Hãy xác nhận các lượt còn lại để hoàn tất.`;
             clearPatientSuggestions();
         }
         patientCodeInput.disabled = dayLocked;
@@ -271,6 +269,8 @@ if (nurseApp) {
         if (addButton) addButton.disabled = dayLocked;
         confirmButton.disabled = dayConfirmed;
         confirmButton.textContent = dayConfirmed ? "Danh sách đã chốt" : "Xác nhận danh sách";
+        reopenButton.hidden = !dayConfirmed || selectedDate < clinicToday;
+        reopenButton.disabled = selectedDate < clinicToday;
 
         if (!visible.length) {
             const row = document.createElement("tr");
@@ -306,87 +306,17 @@ if (nurseApp) {
         addPagination(pagination, pageCount, currentPage, "page");
     }
 
-    function renderWaiting() {
-        const patients = filtered(waitingPatients);
-        const pageCount = Math.ceil(patients.length / pageSize);
-        currentWaitingPage = Math.min(currentWaitingPage, Math.max(pageCount, 1));
-        const start = (currentWaitingPage - 1) * pageSize;
-        const visible = patients.slice(start, start + pageSize);
-
-        waitingRows.replaceChildren();
-        waitingCount.textContent = String(waitingPatients.length);
-        const targetIsPast = selectedDate < clinicToday;
-        approvalTarget.textContent = dayLocked
-            ? `Ngày khám đích ${formatDate(selectedDate)} đã được chốt; không thể duyệt thêm bệnh nhân.`
-            : targetIsPast
-                ? "Không thể duyệt vào ngày đã qua."
-                : `Ngày khám đích: ${formatDate(selectedDate)}`;
-        if (!visible.length) {
-            const row = document.createElement("tr");
-            const cell = makeCell(
-                row,
-                searchTerm ? "Không tìm thấy bệnh nhân phù hợp." : "Chưa có bệnh nhân chờ duyệt."
-            );
-            cell.colSpan = 6;
-            cell.className = "nurse-table-empty";
-            waitingRows.append(row);
-        } else {
-            visible.forEach((patient, index) => {
-                const row = document.createElement("tr");
-                makeCell(row, String(start + index + 1));
-                makeCell(row, patient.name);
-                makeCell(row, formatDate(patient.examDate));
-                makeCell(row, patient.phone);
-                makeCell(row, String(patient.birthYear));
-                const actionsCell = document.createElement("td");
-                const actions = document.createElement("div");
-                actions.className = "nurse-row-actions";
-                actions.append(
-                    makeButton(
-                        "Duyệt vào ngày đã chọn", "btn btn-sm btn-outline-success",
-                        "approvePatient", patient.id,
-                        dayLocked || targetIsPast || activePatients.length >= dailyLimit
-                    ),
-                    makeIconButton("Hủy lượt khám", "cancelPatient", patient.id)
-                );
-                actionsCell.append(actions);
-                row.append(actionsCell);
-                waitingRows.append(row);
-            });
-        }
-
-        const end = Math.min(start + pageSize, patients.length);
-        waitingSummary.textContent = patients.length
-            ? `Hiển thị ${start + 1}–${end} trên ${patients.length} bệnh nhân đang chờ`
-            : "Chưa có bệnh nhân chờ duyệt.";
-        addPagination(waitingPagination, pageCount, currentWaitingPage, "waitingPage");
-    }
-
     function renderAll() {
         renderPatients();
-        renderWaiting();
     }
 
     async function cancelPatient(patientId) {
-        const patient = [...activePatients, ...waitingPatients]
+        const patient = activePatients
             .find(item => String(item.id) === String(patientId));
         if (!patient || !window.confirm(`Hủy lượt khám của ${patient.name}?`)) return;
         try {
             const result = await requestApi(`/nurse/api/lists/${patient.id}`, {
                 method: "DELETE",
-            });
-            await refreshDay();
-            showStatus(result.message, "success");
-        } catch (error) {
-            showStatus(error.message, "error");
-        }
-    }
-
-    async function approvePatient(patientId) {
-        try {
-            const result = await requestApi(`/nurse/api/lists/${patientId}/approve`, {
-                method: "POST",
-                body: JSON.stringify({ date: selectedDate }),
             });
             await refreshDay();
             showStatus(result.message, "success");
@@ -440,8 +370,6 @@ if (nurseApp) {
             return;
         }
         button.disabled = true;
-        const patientName = matchedPatient.name;
-        const statusKind = activePatients.length >= dailyLimit ? "info" : "success";
         try {
             const result = await requestApi("/nurse/api/lists", {
                 method: "POST",
@@ -457,16 +385,10 @@ if (nurseApp) {
             clearPatientSuggestions();
             clearPatientLookup();
             currentPage = 1;
-            currentWaitingPage = 1;
             searchTerm = "";
             searchInput.value = "";
             await refreshDay();
-            showStatus(
-                result.patient.status === "CHO_DUYET"
-                    ? `${patientName} đã được thêm vào danh sách chờ duyệt.`
-                    : result.message,
-                result.patient.status === "CHO_DUYET" ? "info" : statusKind
-            );
+            showStatus(result.message, "success");
         } catch (error) {
             showStatus(error.message, "error");
         } finally {
@@ -479,11 +401,9 @@ if (nurseApp) {
     dateInput.addEventListener("change", async () => {
         selectedDate = dateInput.value;
         currentPage = 1;
-        currentWaitingPage = 1;
         searchTerm = "";
         searchInput.value = "";
         activePatients = [];
-        waitingPatients = [];
         dayConfirmed = false;
         dayLocked = false;
         renderAll();
@@ -499,7 +419,6 @@ if (nurseApp) {
         event.preventDefault();
         searchTerm = searchInput.value.trim();
         currentPage = 1;
-        currentWaitingPage = 1;
         renderAll();
         showStatus("");
     });
@@ -507,7 +426,6 @@ if (nurseApp) {
         searchInput.value = "";
         searchTerm = "";
         currentPage = 1;
-        currentWaitingPage = 1;
         renderAll();
         showStatus("");
         searchInput.focus();
@@ -517,28 +435,12 @@ if (nurseApp) {
         const cancelButton = event.target.closest("[data-cancel-patient]");
         if (cancelButton) await cancelPatient(cancelButton.dataset.cancelPatient);
     });
-    waitingRows.addEventListener("click", async event => {
-        const cancelButton = event.target.closest("[data-cancel-patient]");
-        const approveButton = event.target.closest("[data-approve-patient]");
-        if (cancelButton) await cancelPatient(cancelButton.dataset.cancelPatient);
-        if (approveButton && !approveButton.disabled) {
-            await approvePatient(approveButton.dataset.approvePatient);
-        }
-    });
-
     pagination.addEventListener("click", event => {
         const button = event.target.closest("[data-page]");
         if (!button || button.disabled) return;
         currentPage = Number(button.dataset.page);
         renderPatients();
     });
-    waitingPagination.addEventListener("click", event => {
-        const button = event.target.closest("[data-waiting-page]");
-        if (!button || button.disabled) return;
-        currentWaitingPage = Number(button.dataset.waitingPage);
-        renderWaiting();
-    });
-
     confirmButton.addEventListener("click", async () => {
         if (!activePatients.length) {
             showStatus("Danh sách đang trống; hãy thêm ít nhất một bệnh nhân trước khi xác nhận.", "error");
@@ -553,6 +455,27 @@ if (nurseApp) {
         )) return;
         try {
             const result = await requestApi("/nurse/api/lists/confirm", {
+                method: "POST",
+                body: JSON.stringify({ date: selectedDate }),
+            });
+            await refreshDay();
+            showStatus(result.message, "success");
+        } catch (error) {
+            showStatus(error.message, "error");
+        }
+    });
+
+    reopenButton.addEventListener("click", async () => {
+        if (!dayConfirmed) return;
+        if (selectedDate < clinicToday) {
+            showStatus("Không thể mở lại danh sách của ngày đã qua.", "error");
+            return;
+        }
+        if (!window.confirm(
+            `Mở lại danh sách ngày ${formatDate(selectedDate)} để bổ sung bệnh nhân?`
+        )) return;
+        try {
+            const result = await requestApi("/nurse/api/lists/reopen", {
                 method: "POST",
                 body: JSON.stringify({ date: selectedDate }),
             });

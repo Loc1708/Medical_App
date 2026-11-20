@@ -17,7 +17,7 @@ from app.models import (
 from app.utils import validate_password
 
 
-ACTIVE_EXAM_STATUSES = ("CHO_KHAM", "DA_XAC_NHAN")
+ACTIVE_EXAM_STATUSES = ("CHO_KHAM", "DA_MO_LAI", "DA_XAC_NHAN")
 NURSE_VISIBLE_STATUSES = (*ACTIVE_EXAM_STATUSES, "CHO_DUYET")
 
 
@@ -506,7 +506,7 @@ def confirm_nurse_exam_day(exam_date: date, nurse_id: int | None = None) -> int:
     registrations = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.ngayKham == exam_date,
-            ChiTietDanhSachKham.trangThai == "CHO_KHAM",
+            ChiTietDanhSachKham.trangThai.in_(("CHO_KHAM", "DA_MO_LAI")),
         ).with_for_update()
     ))
     if not registrations:
@@ -523,6 +523,25 @@ def confirm_nurse_exam_day(exam_date: date, nurse_id: int | None = None) -> int:
         registration.trangThai = "DA_XAC_NHAN"
     _commit_exam_list_change()
     
+    return len(registrations)
+
+
+def reopen_nurse_exam_day(exam_date: date) -> int:
+    if exam_date < clinic_today():
+        raise ValueError("Không thể mở lại danh sách của ngày đã qua.")
+
+    registrations = list(db.session.scalars(
+        db.select(ChiTietDanhSachKham).where(
+            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
+        ).with_for_update()
+    ))
+    if not registrations:
+        raise ValueError("Ngày này chưa có danh sách đã chốt.")
+
+    for registration in registrations:
+        registration.trangThai = "DA_MO_LAI"
+    _commit_exam_list_change()
     return len(registrations)
 
 

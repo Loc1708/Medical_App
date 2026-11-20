@@ -231,6 +231,11 @@ def nurse_confirm_exam_day():
     try:
         payload = request.get_json(silent=True)
         exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
+        sms_entries = [
+            entry
+            for entry in dao.nurse_exam_list(exam_date)[0]
+            if entry.trangThai == "CHO_KHAM"
+        ]
         nurse = current_user.nhanVien
         confirmed_count = dao.confirm_nurse_exam_day(
             exam_date,
@@ -247,8 +252,7 @@ def nurse_confirm_exam_day():
     if not confirmed_count:
         return jsonify(message="Danh sách đã được xác nhận trước đó.")
     sent = failed = 0
-    active, _waiting = dao.nurse_exam_list(exam_date)
-    for entry in active:
+    for entry in sms_entries:
         patient = entry.benhNhan
         code = f"{entry.soThuTu or 0:02d}"   # phần biến, tối đa 20 ký tự
         content = f"{code} la ma xac minh dang ky Baotrixemay cua ban"
@@ -261,3 +265,28 @@ def nurse_confirm_exam_day():
             app.logger.warning("SMS that bai cho benh nhan %s: %s", patient.maBN, data)
 
     return jsonify(message=f"Danh sách đã được xác nhận. Đã gửi {sent} SMS, lỗi {failed}.")
+
+
+@app.post("/nurse/api/lists/reopen")
+@roles_required(Role.NURSE)
+def nurse_reopen_exam_day():
+    try:
+        payload = request.get_json(silent=True)
+        exam_date = _nurse_exam_date(
+            payload.get("date") if isinstance(payload, dict) else None
+        )
+        reopened_count = dao.reopen_nurse_exam_day(exam_date)
+    except ValueError as error:
+        db.session.rollback()
+        return jsonify(error=str(error)), 409
+    except SQLAlchemyError:
+        db.session.rollback()
+        app.logger.exception("Nurse exam-list reopen failed.")
+        return jsonify(error="Không thể mở lại danh sách trong cơ sở dữ liệu."), 500
+    return jsonify(
+        message=(
+            "Đã mở lại danh sách khám để bổ sung bệnh nhân. "
+            f"Có {reopened_count} bệnh nhân cần xác nhận lại."
+        ),
+        reopened_count=reopened_count,
+    )

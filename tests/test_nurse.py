@@ -304,6 +304,54 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(len(day["active"]), 1)
         self.assertEqual(day["active"][0]["status"], "DA_XAC_NHAN")
 
+    def test_confirmed_exam_day_can_be_reopened_and_accept_supplemental_patient(self):
+        exam_date = dao.clinic_today()
+        first = self._api(
+            "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
+        )
+        self.assertEqual(first.status_code, 201)
+        confirmed = self._api(
+            "POST",
+            "/nurse/api/lists/confirm",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(confirmed.status_code, 200)
+
+        reopened = self._api(
+            "POST",
+            "/nurse/api/lists/reopen",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(reopened.status_code, 200)
+
+        supplemental = self._api(
+            "POST", "/nurse/api/lists", self._patient(2, exam_date.isoformat())
+        )
+        self.assertEqual(supplemental.status_code, 201)
+
+        day = self._api(
+            "GET", f"/nurse/api/lists?date={exam_date.isoformat()}"
+        ).get_json()
+        statuses = {entry["status"] for entry in day["active"]}
+        self.assertIn("DA_MO_LAI", statuses)
+        self.assertIn("CHO_KHAM", statuses)
+        self.assertFalse(day["confirmed"])
+
+        final_confirm = self._api(
+            "POST",
+            "/nurse/api/lists/confirm",
+            {"date": exam_date.isoformat()},
+        )
+        self.assertEqual(final_confirm.status_code, 200)
+        final_day = self._api(
+            "GET", f"/nurse/api/lists?date={exam_date.isoformat()}"
+        ).get_json()
+        self.assertTrue(final_day["confirmed"])
+        self.assertTrue(all(
+            entry["status"] == "DA_XAC_NHAN"
+            for entry in final_day["active"]
+        ))
+
     def test_waiting_patient_cannot_be_approved_into_confirmed_exam_day(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()

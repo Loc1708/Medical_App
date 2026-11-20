@@ -23,6 +23,7 @@ if (nurseApp) {
     const status = nurseApp.querySelector("[data-nurse-status]");
     const confirmedStatus = nurseApp.querySelector("[data-confirmed-status]");
     const confirmButton = nurseApp.querySelector("[data-confirm-list]");
+    const reopenButton = nurseApp.querySelector("[data-reopen-list]");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     let selectedDate = "";
     let clinicToday = todayValue();
@@ -271,6 +272,8 @@ if (nurseApp) {
         if (addButton) addButton.disabled = dayLocked;
         confirmButton.disabled = dayConfirmed;
         confirmButton.textContent = dayConfirmed ? "Danh sách đã chốt" : "Xác nhận danh sách";
+        reopenButton.hidden = !dayConfirmed || selectedDate < clinicToday;
+        reopenButton.disabled = selectedDate < clinicToday;
 
         if (!visible.length) {
             const row = document.createElement("tr");
@@ -553,6 +556,27 @@ if (nurseApp) {
         )) return;
         try {
             const result = await requestApi("/nurse/api/lists/confirm", {
+                method: "POST",
+                body: JSON.stringify({ date: selectedDate }),
+            });
+            await refreshDay();
+            showStatus(result.message, "success");
+        } catch (error) {
+            showStatus(error.message, "error");
+        }
+    });
+
+    reopenButton.addEventListener("click", async () => {
+        if (!dayConfirmed) return;
+        if (selectedDate < clinicToday) {
+            showStatus("Không thể mở lại danh sách của ngày đã qua.", "error");
+            return;
+        }
+        if (!window.confirm(
+            `Mở lại danh sách ngày ${formatDate(selectedDate)} để bổ sung bệnh nhân?`
+        )) return;
+        try {
+            const result = await requestApi("/nurse/api/lists/reopen", {
                 method: "POST",
                 body: JSON.stringify({ date: selectedDate }),
             });

@@ -11,9 +11,10 @@
     </div>
 
     <div class="alert alert-info nurse-info-note mt-4" role="note">
-        Danh sách và hàng chờ được lưu vào cơ sở dữ liệu. Bệnh nhân vượt giới hạn trong ngày sẽ chờ y tá duyệt.
-        Hệ thống chưa gửi SMS.
+        Bệnh nhân đăng ký trực tuyến được xếp vào ngày gần nhất còn chỗ và chưa chốt.
+        Khi thêm trực tiếp, hãy chọn ngày khác nếu danh sách đã đầy.
     </div>
+    <div class="alert alert-warning mt-3" data-legacy-waiting-warning role="alert" hidden></div>
     <div class="nurse-status mt-3" data-nurse-status role="status" aria-live="polite" hidden></div>
 
     <section class="panel nurse-date-panel mt-4" aria-labelledby="nurse-date-heading">
@@ -47,53 +48,15 @@
         <div class="nurse-patient-lookup-result mt-3" data-patient-lookup-result hidden></div>
         <div class="alert alert-warning mt-3 mb-0" data-day-locked-warning
              role="alert" aria-live="polite" hidden>
-            Danh sách đã được xác nhận và chốt; không thể thêm hoặc duyệt thêm bệnh nhân vào ngày này.
+            Danh sách đã được xác nhận và chốt; không thể thêm bệnh nhân vào ngày này.
         </div>
     </section>
 
-    <div class="nurse-workspace-grid mt-4">
-        <section class="panel nurse-panel nurse-waiting-panel" aria-labelledby="nurse-waiting-heading">
-            <div class="nurse-panel-heading nurse-list-heading">
-                <div>
-                    <span class="doctor-step" aria-hidden="true">02</span>
-                    <div>
-                        <h2 class="h5 mb-1" id="nurse-waiting-heading">Danh sách chờ duyệt</h2>
-                        <p class="text-muted mb-1">
-                            Hiển thị lượt chờ của mọi ngày. Chọn ngày ở mục Lịch khám phía trên làm ngày đích;
-                            chỉ duyệt từ hôm nay trở đi và khi ngày đích còn chỗ.
-                        </p>
-                        <p class="small fw-semibold mb-0" data-approval-target aria-live="polite"></p>
-                    </div>
-                </div>
-                <span class="role-badge" data-waiting-count>0</span>
-            </div>
-            <div class="table-responsive">
-                <table class="table align-middle nurse-table mb-0">
-                    <caption class="visually-hidden">Bệnh nhân chờ y tá duyệt vào danh sách khám</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">STT</th>
-                            <th scope="col">Họ tên</th>
-                            <th scope="col">Ngày đang chờ</th>
-                            <th scope="col">SĐT</th>
-                            <th scope="col">Năm sinh</th>
-                            <th scope="col" class="text-center">Thao tác</th>
-                        </tr>
-                    </thead>
-                    <tbody data-waiting-rows></tbody>
-                </table>
-            </div>
-            <div class="nurse-list-footer">
-                <span class="text-muted small" data-waiting-summary>Chưa có bệnh nhân chờ duyệt.</span>
-                <nav class="nurse-pagination" data-waiting-pagination
-                     aria-label="Phân trang danh sách chờ duyệt"></nav>
-            </div>
-        </section>
-
+    <div class="mt-4">
         <section class="panel nurse-panel" aria-labelledby="nurse-list-heading">
             <div class="nurse-panel-heading nurse-list-heading">
                 <div>
-                    <span class="doctor-step" aria-hidden="true">03</span>
+                    <span class="doctor-step" aria-hidden="true">02</span>
                     <div>
                         <h2 class="h5 mb-1" id="nurse-list-heading">Danh sách bệnh nhân</h2>
                         <p class="text-muted mb-0">Danh sách theo ngày khám đã chọn.</p>

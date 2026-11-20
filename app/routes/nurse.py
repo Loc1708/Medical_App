@@ -147,12 +147,8 @@ def nurse_create_exam():
         db.session.rollback()
         app.logger.exception("Nurse patient registration failed.")
         return jsonify(error="Không thể lưu lượt khám vào cơ sở dữ liệu."), 500
-    message = (
-        "Danh sách đã đủ chỗ; bệnh nhân được lưu vào hàng chờ để y tá duyệt."
-        if registration.trangThai == "CHO_DUYET"
-        else "Đã lưu bệnh nhân vào danh sách khám."
-    )
-    return jsonify(patient=_nurse_exam_json(registration), message=message), 201
+    return jsonify(patient=_nurse_exam_json(registration),
+                   message="Đã lưu bệnh nhân vào danh sách khám."), 201
 
 
 @app.put("/nurse/api/lists/<int:registration_id>")
@@ -231,13 +227,8 @@ def nurse_confirm_exam_day():
     try:
         payload = request.get_json(silent=True)
         exam_date = _nurse_exam_date(payload.get("date") if isinstance(payload, dict) else None)
-        sms_entries = [
-            entry
-            for entry in dao.nurse_exam_list(exam_date)[0]
-            if entry.trangThai == "CHO_KHAM"
-        ]
         nurse = current_user.nhanVien
-        confirmed_count = dao.confirm_nurse_exam_day(
+        sms_entries = dao.confirm_nurse_exam_day(
             exam_date,
             nurse_id=nurse.maNV if nurse else None,
         )
@@ -248,8 +239,8 @@ def nurse_confirm_exam_day():
         db.session.rollback()
         app.logger.exception("Nurse exam-list confirmation failed.")
         return jsonify(error="Không thể xác nhận danh sách trong cơ sở dữ liệu."), 500
-    
-    if not confirmed_count:
+
+    if not sms_entries:
         return jsonify(message="Danh sách đã được xác nhận trước đó.")
     sent = failed = 0
     for entry in sms_entries:

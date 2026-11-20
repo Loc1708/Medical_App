@@ -204,7 +204,7 @@ def _next_daily_slot(exam_date: date) -> int | None:
             ChiTietDanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
             ChiTietDanhSachKham.soThuTu.is_not(None),
-        )
+        ).with_for_update()
     ))
     if len(used_slots) >= limit:
         return None
@@ -340,34 +340,82 @@ def _get_or_create_exam_day(exam_date: date, nurse_id: int | None = None) -> Dan
     return exam_day
 
 
+def _find_next_available_exam_date(exam_date: date) -> tuple[date, int]:
+    while True:
+        try:
+            _ensure_exam_day_is_open(exam_date)
+        except ConfirmedExamDay:
+            pass
+        else:
+            slot = _next_daily_slot(exam_date)
+            if slot is not None:
+                return exam_date, slot
+        if exam_date == date.max:
+            raise ValueError("Không tìm được ngày khám còn chỗ.")
+        exam_date += timedelta(days=1)
+
+
 def register_patient_exam(
     patient: BenhNhan,
     exam_date: date | None = None,
 ) -> ChiTietDanhSachKham:
-    exam_date = exam_date or datetime.now(timezone(timedelta(hours=7))).date()
-    _ensure_exam_day_is_open(exam_date)
-    slot = _next_daily_slot(exam_date)
+    exam_date = exam_date or clinic_today()
+    daily_patient_limit(lock=True)
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham).where(
             ChiTietDanhSachKham.maBN == patient.maBN,
-            ChiTietDanhSachKham.ngayKham == exam_date,
+            ChiTietDanhSachKham.ngayKham >= exam_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-        )
+        ).with_for_update()
     )
     if duplicate is not None:
-        raise ValueError("Bạn đã có lượt đăng ký khám trong ngày này.")
+        raise ValueError("Bạn đã có lượt đăng ký khám từ hôm nay trở đi.")
 
+    exam_date, slot = _find_next_available_exam_date(exam_date)
     registration = ChiTietDanhSachKham(
         danhSachKham=_get_or_create_exam_day(exam_date),
         benhNhan=patient,
         ngayKham=exam_date,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
-        trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",
+        trangThai="CHO_KHAM",
     )
     db.session.add(registration)
     _commit_exam_list_change()
     return registration
+
+
+def migrate_waiting_registrations() -> int:
+    daily_patient_limit(lock=True)
+    waiting = list(db.session.scalars(
+        db.select(ChiTietDanhSachKham)
+        .where(ChiTietDanhSachKham.trangThai == "CHO_DUYET")
+        .order_by(ChiTietDanhSachKham.ngayDangKy, ChiTietDanhSachKham.maCTDSKham)
+        .with_for_update()
+    ))
+    for registration in waiting:
+        candidate = max(clinic_today(), registration.ngayKham)
+        while True:
+            candidate, slot = _find_next_available_exam_date(candidate)
+            duplicate = db.session.scalar(
+                db.select(ChiTietDanhSachKham.maCTDSKham).where(
+                    ChiTietDanhSachKham.maBN == registration.maBN,
+                    ChiTietDanhSachKham.ngayKham == candidate,
+                    ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
+                ).with_for_update()
+            )
+            if duplicate is None:
+                break
+            if candidate == date.max:
+                raise ValueError("Không tìm được ngày khám còn chỗ.")
+            candidate += timedelta(days=1)
+        registration.danhSachKham = _get_or_create_exam_day(candidate)
+        registration.ngayKham = candidate
+        registration.soThuTu = slot
+        registration.trangThai = "CHO_KHAM"
+        db.session.flush()
+    _commit_exam_list_change()
+    return len(waiting)
 
 
 def create_nurse_exam(
@@ -376,8 +424,14 @@ def create_nurse_exam(
     patient: BenhNhan,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
+    daily_patient_limit(lock=True)
     _ensure_exam_day_is_open(exam_date)
     slot = _next_daily_slot(exam_date)
+    if slot is None:
+        raise DailyCapacityReached(
+            f"Danh sách ngày {exam_date.strftime('%d/%m/%Y')} đã đủ chỗ. "
+            "Vui lòng chọn ngày khác."
+        )
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maCTDSKham)
         .where(
@@ -395,7 +449,7 @@ def create_nurse_exam(
         ngayKham=exam_date,
         soThuTu=slot,
         ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
-        trangThai="CHO_KHAM" if slot is not None else "CHO_DUYET",
+        trangThai="CHO_KHAM",
     )
     db.session.add(registration)
     _commit_exam_list_change()
@@ -445,6 +499,7 @@ def update_nurse_exam(
 
 
 def cancel_nurse_exam(registration_id: int) -> None:
+    daily_patient_limit(lock=True)
     registration = db.session.scalar(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.maCTDSKham == registration_id,
@@ -463,6 +518,7 @@ def approve_waiting_nurse_exam(
     target_date: date,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
+    daily_patient_limit(lock=True)
     if target_date < clinic_today():
         raise PastExamDate("Không thể duyệt bệnh nhân vào ngày đã qua.")
 
@@ -502,7 +558,10 @@ def approve_waiting_nurse_exam(
     return registration
 
 
-def confirm_nurse_exam_day(exam_date: date, nurse_id: int | None = None) -> int:
+def confirm_nurse_exam_day(
+    exam_date: date, nurse_id: int | None = None,
+) -> list[ChiTietDanhSachKham]:
+    daily_patient_limit(lock=True)
     registrations = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.ngayKham == exam_date,
@@ -516,20 +575,21 @@ def confirm_nurse_exam_day(exam_date: date, nurse_id: int | None = None) -> int:
                 ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
             )
         ) is not None:
-            return 0
+            return []
         raise ValueError("Không có bệnh nhân nào trong danh sách để xác nhận.")
     _get_or_create_exam_day(exam_date, nurse_id)
     for registration in registrations:
         registration.trangThai = "DA_XAC_NHAN"
     _commit_exam_list_change()
-    
-    return len(registrations)
+
+    return registrations
 
 
 def reopen_nurse_exam_day(exam_date: date) -> int:
     if exam_date < clinic_today():
         raise ValueError("Không thể mở lại danh sách của ngày đã qua.")
 
+    daily_patient_limit(lock=True)
     registrations = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.ngayKham == exam_date,

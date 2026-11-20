@@ -675,6 +675,7 @@ def create_exam(
     patient: BenhNhan,
     doctor: BacSi,
     symptoms: str,
+    diagnosis: str,
     prescriptions: list[dict],
     exam_date: date,
     status: str = "DA_LAP",
@@ -749,6 +750,7 @@ def create_exam(
 
     exam.ngayKham = exam_date
     exam.trieuChung = symptoms
+    exam.duDoanLoaiBenh = diagnosis or None
     exam.trangThai = status
     exam.benhNhan = patient
     exam.bacSi = doctor

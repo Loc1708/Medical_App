@@ -45,6 +45,7 @@
                         <th scope="col">Ngày khám</th>
                         <th scope="col">Bệnh nhân</th>
                         <th scope="col">Triệu chứng</th>
+                        <th scope="col">Dự đoán loại bệnh</th>
                         <th scope="col">Số thuốc</th>
                         <th scope="col">Thao tác</th>
                     </tr>
@@ -101,6 +102,7 @@
                                 <th scope="col">Mã phiếu</th>
                                 <th scope="col">Triệu chứng</th>
                                 <th scope="col">Bác sĩ</th>
+                                <th scope="col">Dự đoán loại bệnh</th>
                                 <th scope="col">Số thuốc</th>
                                 <th scope="col">Trạng thái</th>
                                 <th scope="col">Thao tác</th>
@@ -179,8 +181,11 @@
             </p>
             <small class="doctor-field-help d-block mb-3" id="exam-date-help">Ngày khám tự động lấy theo ngày hiện tại.</small>
             <label class="form-label" for="symptoms">Triệu chứng</label>
-            <textarea class="form-control doctor-symptoms" id="symptoms" rows="7"
+            <textarea class="form-control doctor-symptoms" id="symptoms" rows="5"
                       placeholder="Nhập triệu chứng của bệnh nhân..."></textarea>
+            <label class="form-label mt-3" for="diagnosis">Dự đoán loại bệnh</label>
+            <textarea class="form-control doctor-diagnosis" id="diagnosis" rows="4"
+                      placeholder="Nhập dự đoán hoặc chẩn đoán ban đầu..."></textarea>
             <small class="doctor-field-help d-block mt-2">Ngày khám được tự động lấy theo ngày hiện tại khi lập phiếu.</small>
             <small class="doctor-field-help d-block mt-2">Có thể lưu nháp khi thông tin chưa đầy đủ; phiếu chính thức cần có triệu chứng và cách dùng thuốc.</small>
         </section>

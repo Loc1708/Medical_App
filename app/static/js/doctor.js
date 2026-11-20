@@ -68,13 +68,15 @@ if (doctorStatus) {
         }
         const discardedDraft = currentDraftId !== null;
         const discardedForm = selectedMedicines.size > 0
-            || document.querySelector("#symptoms").value.trim() !== "";
+            || document.querySelector("#symptoms").value.trim() !== ""
+            || document.querySelector("#diagnosis").value.trim() !== "";
         selectedPatientCode = "";
         setCurrentDraftId(null);
         draftDirty = false;
         draftRevision += 1;
         selectedMedicines.clear();
         document.querySelector("#symptoms").value = "";
+        document.querySelector("#diagnosis").value = "";
         renderPrescription();
         patientCard.hidden = true;
         showPatientHistoryMessage(
@@ -135,6 +137,7 @@ if (doctorStatus) {
             addCell(row, exam.id);
             addCell(row, exam.symptoms);
             addCell(row, exam.doctor);
+            addCell(row, exam.diagnosis || "Chưa ghi");
             addCell(row, String(exam.prescription_count));
             addCell(row, exam.status === "NHAP" ? "Bản nháp" : "Đã lập");
 
@@ -188,7 +191,7 @@ if (doctorStatus) {
         const detailsRow = document.createElement("tr");
         detailsRow.dataset.prescriptionDetails = exam.id;
         const detailsCell = document.createElement("td");
-        detailsCell.colSpan = 7;
+        detailsCell.colSpan = 8;
         if (!exam.prescriptions.length) {
             detailsCell.textContent = "Phiếu khám này không có thuốc được kê.";
         } else {
@@ -260,7 +263,9 @@ if (doctorStatus) {
             );
             const data = await readJson(response);
             showPatient(data.patient);
-            if (document.querySelector("#symptoms").value.trim() || selectedMedicines.size) {
+            if (document.querySelector("#symptoms").value.trim()
+                || document.querySelector("#diagnosis").value.trim()
+                || selectedMedicines.size) {
                 scheduleDraftAutosave();
             }
         } catch (error) {
@@ -313,6 +318,7 @@ if (doctorStatus) {
             showPatient(patientData.patient);
             setCurrentDraftId(data.exam.id);
             document.querySelector("#symptoms").value = data.exam.symptoms;
+            document.querySelector("#diagnosis").value = data.exam.diagnosis || "";
             selectedMedicines.clear();
             data.exam.prescriptions.forEach(item => {
                 selectedMedicines.set(item.medicine_code, {
@@ -350,6 +356,7 @@ if (doctorStatus) {
                 addCell(row, draft.date);
                 addCell(row, `${draft.patient_name} (${draft.patient_code})`);
                 addCell(row, draft.symptoms || "Chưa nhập");
+                addCell(row, draft.diagnosis || "Chưa nhập");
                 addCell(row, String(draft.prescription_count));
                 const action = document.createElement("td");
                 const button = document.createElement("button");
@@ -405,6 +412,7 @@ if (doctorStatus) {
                 draftDirty = false;
                 draftRevision += 1;
                 document.querySelector("#symptoms").value = "";
+                document.querySelector("#diagnosis").value = "";
                 selectedMedicines.clear();
                 renderPrescription();
             }
@@ -598,6 +606,7 @@ if (doctorStatus) {
     }
 
     document.querySelector("#symptoms").addEventListener("input", scheduleDraftAutosave);
+    document.querySelector("#diagnosis").addEventListener("input", scheduleDraftAutosave);
     window.addEventListener("pagehide", () => {
         window.clearTimeout(autosaveTimer);
         if (!draftDirty || !selectedPatientCode
@@ -740,9 +749,15 @@ if (doctorStatus) {
             return false;
         }
         const symptoms = document.querySelector("#symptoms").value.trim();
+        const diagnosis = document.querySelector("#diagnosis").value.trim();
         if (status === "DA_LAP" && !symptoms) {
             if (!silent) showDoctorStatus("Vui lòng nhập triệu chứng trước khi lập phiếu.", true);
             document.querySelector("#symptoms").focus();
+            return false;
+        }
+        if (status === "DA_LAP" && !diagnosis) {
+            if (!silent) showDoctorStatus("Vui lòng nhập dự đoán loại bệnh trước khi lập phiếu.", true);
+            document.querySelector("#diagnosis").focus();
             return false;
         }
         const prescriptions = Array.from(selectedMedicines.values());
@@ -778,6 +793,7 @@ if (doctorStatus) {
                 body: JSON.stringify({
                     patient_code: requestPatientCode,
                     symptoms,
+                    diagnosis,
                     status,
                     draft_id: requestDraftId,
                     prescriptions: prescriptions.map(item => ({
@@ -793,6 +809,7 @@ if (doctorStatus) {
                     setCurrentDraftId(null);
                     draftDirty = false;
                     document.querySelector("#symptoms").value = "";
+                    document.querySelector("#diagnosis").value = "";
                     selectedMedicines.clear();
                     renderPrescription();
                 }

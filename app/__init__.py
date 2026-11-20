@@ -158,30 +158,38 @@ def create_patient_registration_table() -> None:
 
 @app.cli.command("upgrade-clinical-schema")
 def upgrade_clinical_schema() -> None:
-    """Add the draft/final status column without changing existing exam rows."""
+    """Add clinical status and diagnosis columns without changing existing exam rows."""
     from sqlalchemy import inspect
 
     inspector = inspect(db.engine)
     if "PhieuKham" not in inspector.get_table_names():
         raise click.ClickException("PhieuKham is missing; run init-db first.")
-    if any(column["name"] == "trangThai" for column in inspector.get_columns("PhieuKham")):
-        click.echo("PhieuKham.trangThai already exists; no changes made.")
-        return
-
     quote = db.engine.dialect.identifier_preparer.quote
-    statement = (
-        f"ALTER TABLE {quote('PhieuKham')} ADD COLUMN {quote('trangThai')} "
-        "VARCHAR(20) NOT NULL DEFAULT 'DA_LAP'"
-    )
+    columns = {column["name"] for column in inspector.get_columns("PhieuKham")}
+    statements = []
+    if "trangThai" not in columns:
+        statements.append(
+            f"ALTER TABLE {quote('PhieuKham')} ADD COLUMN {quote('trangThai')} "
+            "VARCHAR(20) NOT NULL DEFAULT 'DA_LAP'"
+        )
+    if "DuDoanLoaiBenh" not in columns:
+        statements.append(
+            f"ALTER TABLE {quote('PhieuKham')} ADD COLUMN {quote('DuDoanLoaiBenh')} "
+            "TEXT NULL"
+        )
+    if not statements:
+        click.echo("PhieuKham.trangThai already exists; DuDoanLoaiBenh already exists.")
+        return
     try:
         with db.engine.begin() as connection:
-            connection.exec_driver_sql(statement)
+            for statement in statements:
+                connection.exec_driver_sql(statement)
     except SQLAlchemyError:
         app.logger.exception("Clinical schema upgrade failed.")
         raise click.ClickException(
-            "Could not add PhieuKham.trangThai; inspect the database before retrying."
+            "Could not add PhieuKham clinical columns; inspect the database before retrying."
         ) from None
-    click.echo("PhieuKham.trangThai added; existing exams default to DA_LAP.")
+    click.echo("PhieuKham clinical columns added; existing exams keep DA_LAP.")
 
 
 @app.cli.command("upgrade-nurse-queue-schema")
@@ -416,6 +424,7 @@ def seed_doctor_demo() -> None:
             maPhieuKham="DEMO-PK-QUYNH",
             ngayKham=today - timedelta(days=1),
             trieuChung=marker,
+            duDoanLoaiBenh="Dữ liệu kiểm thử - không phải chẩn đoán thật.",
             benhNhan=patient,
             bacSi=doctor,
         ))

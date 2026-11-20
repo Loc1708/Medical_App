@@ -165,6 +165,9 @@ nhận trạng thái `DA_LAP`, không xóa hoặc sửa nội dung hồ sơ:
 ```
 
 Database mới đã có cột này sau `init-db`, nên migration sẽ báo không cần thay đổi.
+Phiếu khám cũng lưu dự đoán loại bệnh trong cột `DuDoanLoaiBenh`.
+Lệnh `upgrade-clinical-schema` thêm cột này khi database cũ chưa có, giữ
+các phiếu khám và dữ liệu hiện có.
 
 Với database đang dùng cấu trúc đăng ký cũ, dừng server/tiến trình đang ghi và
 sao lưu database trước khi đổi cấu trúc. Chạy migration sau một lần:

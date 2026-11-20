@@ -398,6 +398,7 @@ class AccountTests(unittest.TestCase):
             json={
                 "patient_code": patient_code,
                 "symptoms": "Nội dung phiếu khám kiểm thử",
+                "diagnosis": "Viêm đường hô hấp trên",
                 "prescriptions": [{
                     "medicine_code": "MED-1", "quantity": 2,
                     "instructions": "Cách dùng kiểm thử",
@@ -415,6 +416,8 @@ class AccountTests(unittest.TestCase):
         self.assertEqual(invoice.trangThai, "CHUA_THANH_TOAN")
         self.assertEqual(saved.json["invoice_id"], invoice.maHoaDon)
         self.assertEqual(saved.json["invoice_total"], 102000)
+        exam = db.session.get(PhieuKham, saved.json["exam_id"])
+        self.assertEqual(exam.duDoanLoaiBenh, "Viêm đường hô hấp trên")
         self.assertEqual(medicine.soLuongTon, 8)
         history = self.client.get(
             f"/doctor/api/patients/{patient_code}/history"
@@ -612,6 +615,7 @@ class AccountTests(unittest.TestCase):
         finalized = save(self.client, csrf_for(self.client), {
             "patient_code": patient_code,
             "symptoms": "Phiếu đã hoàn chỉnh",
+            "diagnosis": "Viêm đường hô hấp trên",
             "status": "DA_LAP",
             "draft_id": draft_id,
             "prescriptions": [{

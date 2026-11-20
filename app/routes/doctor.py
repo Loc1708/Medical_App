@@ -49,6 +49,7 @@ def doctor_patient_history(code: str):
         "id": exam.maPhieuKham,
         "date": exam.ngayKham.strftime("%d/%m/%Y"),
         "symptoms": exam.trieuChung,
+        "diagnosis": exam.duDoanLoaiBenh or "",
         "doctor": exam.bacSi.nhanVien.hoTen,
         "prescription_count": len(exam.chiTietDonThuocs),
         "prescriptions": [{
@@ -79,6 +80,7 @@ def doctor_get_draft(exam_id: str):
         "id": draft.maPhieuKham,
         "patient_code": draft.benhNhan.maHienThi,
         "symptoms": draft.trieuChung,
+        "diagnosis": draft.duDoanLoaiBenh or "",
         "prescriptions": [{
             "medicine_code": detail.maThuoc,
             "name": detail.thuoc.tenThuoc,
@@ -103,6 +105,7 @@ def doctor_list_drafts():
         "patient_name": draft.benhNhan.hoTen,
         "date": draft.ngayKham.strftime("%d/%m/%Y"),
         "symptoms": draft.trieuChung,
+        "diagnosis": draft.duDoanLoaiBenh or "",
         "prescription_count": len(draft.chiTietDonThuocs),
     } for draft in drafts])
 
@@ -150,11 +153,16 @@ def doctor_create_exam():
     symptoms = payload.get("symptoms")
     if not isinstance(symptoms, str) or len(symptoms.strip()) > 2000:
         return jsonify(error="Triệu chứng tối đa 2.000 ký tự."), 400
+    diagnosis = payload.get("diagnosis", "")
+    if not isinstance(diagnosis, str) or len(diagnosis.strip()) > 2000:
+        return jsonify(error="Dự đoán loại bệnh tối đa 2.000 ký tự."), 400
     status = payload.get("status", "DA_LAP")
     if not isinstance(status, str) or status not in {"NHAP", "DA_LAP"}:
         return jsonify(error="Trạng thái phiếu khám không hợp lệ."), 400
     if status == "DA_LAP" and not symptoms.strip():
         return jsonify(error="Triệu chứng bắt buộc khi lập phiếu khám."), 400
+    if status == "DA_LAP" and not diagnosis.strip():
+        return jsonify(error="Dự đoán loại bệnh bắt buộc khi lập phiếu khám."), 400
     rows = payload.get("prescriptions", [])
     if not isinstance(rows, list) or len(rows) > 30:
         return jsonify(error="Danh sách thuốc không hợp lệ."), 400
@@ -207,7 +215,7 @@ def doctor_create_exam():
     exam_date = datetime.now(clinic_timezone).date()
     try:
         exam, invoice = dao.create_exam(
-            patient, doctor, symptoms.strip(), prescription_data, exam_date,
+            patient, doctor, symptoms.strip(), diagnosis.strip(), prescription_data, exam_date,
             status=status, exam=draft,
         )
     except ValueError as error:

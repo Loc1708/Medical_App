@@ -223,6 +223,9 @@ class PhieuKham(db.Model):
     maPhieuKham: Mapped[str] = mapped_column("MaPhieuKham", db.String(36), primary_key=True)
     ngayKham: Mapped[date] = mapped_column(db.Date, nullable=False)
     trieuChung: Mapped[str] = mapped_column(db.Text, nullable=False)
+    duDoanLoaiBenh: Mapped[str | None] = mapped_column(
+        "DuDoanLoaiBenh", db.Text, nullable=True,
+    )
     trangThai: Mapped[str] = mapped_column(
         db.String(20), nullable=False, default="DA_LAP", server_default="DA_LAP",
     )

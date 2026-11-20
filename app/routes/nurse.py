@@ -250,7 +250,8 @@ def nurse_confirm_exam_day():
     active, _waiting = dao.nurse_exam_list(exam_date)
     for entry in active:
         patient = entry.benhNhan
-        content = f"Code: {entry.soThuTu or 0:02d}"
+        code = f"{entry.soThuTu or 0:02d}"   # phần biến, tối đa 20 ký tự
+        content = f"{code} la ma xac minh dang ky Baotrixemay cua ban"
         #f"Lich kham: {exam_date.strftime('%d/%m/%Y')}, STT: {entry.soThuTu}."
         ok, data = send_sms(patient.soDienThoai.lstrip("+"), content)
         if ok:

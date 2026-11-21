@@ -236,6 +236,19 @@ bảng hoạt động; các dòng còn lại vẫn nằm trong bảng legacy đ�
 chuyển khóa, hủy lượt chỉ đổi trạng thái và đăng ký lại sẽ khôi phục dòng của cùng
 cặp khóa. Kiểm tra dữ liệu và backup trước khi khởi động lại ứng dụng.
 
+Sau khi chuyển khóa ghép, có thể loại bỏ cột `NgayKham` dư thừa khỏi
+`ChiTietDanhSachKham`. Ngày khám sẽ được lấy qua quan hệ:
+
+```text
+ChiTietDanhSachKham.MaDSKham -> DanhSachKham.MaDSKham -> DanhSachKham.NgayKham
+```
+
+Dừng toàn bộ tiến trình ghi và chạy:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app remove-exam-detail-date-column --maintenance
+```
+
 Để tạo dữ liệu DEMO cho luồng bác sĩ trên database hiện cấu hình, sau migration, chạy:
 
 ```powershell

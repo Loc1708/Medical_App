@@ -122,7 +122,7 @@ class NurseQueueTests(unittest.TestCase):
         if day is None:
             day = DanhSachKham(ngayKham=exam_date)
         registration = ChiTietDanhSachKham(
-            danhSachKham=day, benhNhan=patient, ngayKham=exam_date,
+            danhSachKham=day, benhNhan=patient,
             ngayDangKy=datetime.now(), trangThai="CHO_DUYET",
         )
         db.session.add(registration)

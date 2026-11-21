@@ -691,6 +691,149 @@ def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
     return True
 
 
+def loaiBoNgayKhamKhoiChiTietDanhSachKham(engine: Engine) -> bool:
+    """Remove the redundant date column and keep only the list/patient identity."""
+    if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
+        raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
+
+    table_name = "ChiTietDanhSachKham"
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        raise ValueError("ChiTietDanhSachKham is missing; run init-db first.")
+
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
+    if "NgayKham" not in columns:
+        return False
+
+    required = {
+        "MaDSKham", "MaBN", "NgayKham",
+        "SoThuTu", "NgayDangKy", "TrangThai",
+    }
+    if not required <= columns:
+        raise ValueError(
+            "ChiTietDanhSachKham has an unexpected schema; inspect it before migration."
+        )
+
+    quote = engine.dialect.identifier_preparer.quote
+
+    if engine.dialect.name in {"mysql", "mariadb"}:
+        stage_name = "_ChiTietDanhSachKham_normalized"
+        backup_name = "ChiTietDanhSachKham_date_backup"
+        existing_tables = set(inspector.get_table_names())
+        if {stage_name, backup_name} & existing_tables:
+            raise ValueError(
+                "Migration staging or backup table already exists; inspect before retrying."
+            )
+        with engine.begin() as connection:
+            constraints = connection.execute(text(
+                "SELECT CONSTRAINT_NAME "
+                "FROM information_schema.KEY_COLUMN_USAGE "
+                "WHERE TABLE_SCHEMA = DATABASE() "
+                "AND TABLE_NAME = 'ChiTietDanhSachKham' "
+                "AND REFERENCED_TABLE_NAME IS NOT NULL "
+                "AND CONSTRAINT_NAME != 'PRIMARY'"
+            )).scalars().all()
+            for constraint_name in constraints:
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {quote(table_name)} "
+                    f"DROP FOREIGN KEY {quote(constraint_name)}"
+                )
+
+            connection.exec_driver_sql(
+                f"CREATE TABLE {quote(stage_name)} ("
+                f"{quote('MaDSKham')} INTEGER NOT NULL,"
+                f"{quote('MaBN')} INTEGER NOT NULL,"
+                f"{quote('SoThuTu')} INTEGER,"
+                f"{quote('NgayDangKy')} DATETIME NOT NULL,"
+                f"{quote('TrangThai')} VARCHAR(20) NOT NULL,"
+                f"PRIMARY KEY ({quote('MaDSKham')}, {quote('MaBN')}),"
+                f"UNIQUE INDEX {quote('uq_ctdsk_list_slot')} "
+                f"({quote('MaDSKham')}, {quote('SoThuTu')}),"
+                f"INDEX {quote('ix_ctdsk_list_status')} "
+                f"({quote('MaDSKham')}, {quote('TrangThai')}),"
+                f"CONSTRAINT {quote('fk_ctdsk_list')} "
+                f"FOREIGN KEY ({quote('MaDSKham')}) "
+                f"REFERENCES {quote('DanhSachKham')} ({quote('MaDSKham')}),"
+                f"CONSTRAINT {quote('fk_ctdsk_patient')} "
+                f"FOREIGN KEY ({quote('MaBN')}) "
+                f"REFERENCES {quote('BenhNhan')} ({quote('MaBN')})"
+                ")"
+            )
+            connection.exec_driver_sql(
+                f"INSERT INTO {quote(stage_name)} "
+                f"({quote('MaDSKham')}, {quote('MaBN')}, "
+                f"{quote('SoThuTu')}, {quote('NgayDangKy')}, {quote('TrangThai')}) "
+                f"SELECT {quote('MaDSKham')}, {quote('MaBN')}, "
+                f"{quote('SoThuTu')}, {quote('NgayDangKy')}, {quote('TrangThai')} "
+                f"FROM {quote(table_name)}"
+            )
+            source_count = connection.execute(text(
+                f"SELECT COUNT(*) FROM {quote(table_name)}"
+            )).scalar_one()
+            stage_count = connection.execute(text(
+                f"SELECT COUNT(*) FROM {quote(stage_name)}"
+            )).scalar_one()
+            if stage_count != source_count:
+                raise ValueError(
+                    "Date-column removal verification failed; original table retained."
+                )
+
+            connection.exec_driver_sql(
+                f"RENAME TABLE {quote(table_name)} TO {quote(backup_name)}, "
+                f"{quote(stage_name)} TO {quote(table_name)}"
+            )
+        return True
+
+    stage_name = "_ChiTietDanhSachKham_normalized"
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
+        try:
+            with connection.begin():
+                connection.exec_driver_sql(
+                    f"CREATE TABLE {quote(stage_name)} ("
+                    f"{quote('MaDSKham')} INTEGER NOT NULL,"
+                    f"{quote('MaBN')} INTEGER NOT NULL,"
+                    f"{quote('SoThuTu')} INTEGER,"
+                    f"{quote('NgayDangKy')} DATETIME NOT NULL,"
+                    f"{quote('TrangThai')} VARCHAR(20) NOT NULL,"
+                    "PRIMARY KEY (MaDSKham, MaBN),"
+                    "CONSTRAINT fk_ctdsk_list "
+                    "FOREIGN KEY (MaDSKham) REFERENCES DanhSachKham(MaDSKham),"
+                    "CONSTRAINT fk_ctdsk_patient "
+                    "FOREIGN KEY (MaBN) REFERENCES BenhNhan(MaBN)"
+                    ")"
+                )
+                connection.exec_driver_sql(
+                    f"INSERT INTO {quote(stage_name)} "
+                    f"({quote('MaDSKham')}, {quote('MaBN')}, {quote('SoThuTu')}, "
+                    f"{quote('NgayDangKy')}, {quote('TrangThai')}) "
+                    f"SELECT {quote('MaDSKham')}, {quote('MaBN')}, "
+                    f"{quote('SoThuTu')}, {quote('NgayDangKy')}, {quote('TrangThai')} "
+                    f"FROM {quote(table_name)}"
+                )
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {quote(table_name)} "
+                    f"RENAME TO {quote('_ChiTietDanhSachKham_backup_date')}"
+                )
+                connection.exec_driver_sql(
+                    f"ALTER TABLE {quote(stage_name)} "
+                    f"RENAME TO {quote(table_name)}"
+                )
+                connection.exec_driver_sql(
+                    f"CREATE UNIQUE INDEX {quote('uq_ctdsk_list_slot')} "
+                    f"ON {quote(table_name)} ({quote('MaDSKham')}, {quote('SoThuTu')})"
+                )
+                connection.exec_driver_sql(
+                    f"CREATE INDEX {quote('ix_ctdsk_list_status')} "
+                    f"ON {quote(table_name)} ({quote('MaDSKham')}, {quote('TrangThai')})"
+                )
+        finally:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.commit()
+    return True
+
+
 def chuyenChiTietDanhSachKhamSangKhoaGhep(engine: Engine) -> bool:
     if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
         raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
@@ -715,16 +858,40 @@ def chuyenChiTietDanhSachKhamSangKhoaGhep(engine: Engine) -> bool:
             "ChiTietDanhSachKham has an unexpected schema; inspect it before migration."
         )
     existing_tables = set(inspector.get_table_names())
+    if not {"DanhSachKham", "BenhNhan"} <= existing_tables:
+        raise ValueError(
+            "DanhSachKham and BenhNhan are required; run init-db first."
+        )
     if {stage_name, backup_name} & existing_tables:
         raise ValueError(
             "Migration staging or backup table already exists; inspect before retrying."
         )
 
     source_metadata = MetaData()
-    source = Table(table_name, source_metadata, autoload_with=engine)
+    source = Table(
+        table_name,
+        source_metadata,
+        Column("MaCTDSKham", Integer),
+        Column("MaDSKham", Integer),
+        Column("MaBN", Integer),
+        Column("NgayKham", Date),
+        Column("SoThuTu", Integer),
+        Column("NgayDangKy", DateTime),
+        Column("TrangThai", String(20)),
+    )
     staging_metadata = MetaData()
-    Table("DanhSachKham", staging_metadata, autoload_with=engine)
-    Table("BenhNhan", staging_metadata, autoload_with=engine)
+    Table(
+        "DanhSachKham",
+        staging_metadata,
+        Column("MaDSKham", Integer, primary_key=True),
+        Column("NgayKham", Date, nullable=False),
+        UniqueConstraint("MaDSKham", "NgayKham", name="uq_dskham_id_ngay"),
+    )
+    Table(
+        "BenhNhan",
+        staging_metadata,
+        Column("MaBN", Integer, primary_key=True),
+    )
     staged = Table(
         stage_name,
         staging_metadata,
@@ -743,7 +910,15 @@ def chuyenChiTietDanhSachKhamSangKhoaGhep(engine: Engine) -> bool:
 
     def saoChepVaThayBang(connection) -> None:
         source_rows = connection.execute(
-            select(source).order_by(source.c.MaCTDSKham)
+            select(
+                source.c.MaCTDSKham,
+                source.c.MaDSKham,
+                source.c.MaBN,
+                source.c.NgayKham,
+                source.c.SoThuTu,
+                source.c.NgayDangKy,
+                source.c.TrangThai,
+            ).order_by(source.c.MaCTDSKham)
         ).mappings().all()
         latest_by_pair = {}
         for row in source_rows:
@@ -787,12 +962,6 @@ def chuyenChiTietDanhSachKhamSangKhoaGhep(engine: Engine) -> bool:
                 f"{quote(table_name)} TO {quote(backup_name)}, "
                 f"{quote(stage_name)} TO {quote(table_name)}"
             )
-            for index in old_indexes:
-                if index.get("name"):
-                    connection.exec_driver_sql(
-                        f"ALTER TABLE {quote(backup_name)} "
-                        f"DROP INDEX {quote(index['name'])}"
-                    )
         else:
             connection.exec_driver_sql(
                 f"ALTER TABLE {quote(table_name)} RENAME TO {quote(backup_name)}"
@@ -804,18 +973,14 @@ def chuyenChiTietDanhSachKhamSangKhoaGhep(engine: Engine) -> bool:
                 f"ALTER TABLE {quote(stage_name)} RENAME TO {quote(table_name)}"
             )
 
-        migrated = Table(table_name, MetaData(), autoload_with=connection)
-        Index(
-            "uq_ctdsk_ngay_thu_tu",
-            migrated.c.NgayKham,
-            migrated.c.SoThuTu,
-            unique=True,
-        ).create(connection)
-        Index(
-            "ix_ctdsk_ngay_trang_thai",
-            migrated.c.NgayKham,
-            migrated.c.TrangThai,
-        ).create(connection)
+        connection.exec_driver_sql(
+            f"CREATE UNIQUE INDEX {quote('uq_ctdsk_ngay_thu_tu')} "
+            f"ON {quote(table_name)} ({quote('NgayKham')}, {quote('SoThuTu')})"
+        )
+        connection.exec_driver_sql(
+            f"CREATE INDEX {quote('ix_ctdsk_ngay_trang_thai')} "
+            f"ON {quote(table_name)} ({quote('NgayKham')}, {quote('TrangThai')})"
+        )
 
     if engine.dialect.name == "sqlite":
         with engine.connect() as connection:

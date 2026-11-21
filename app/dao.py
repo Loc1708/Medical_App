@@ -175,10 +175,14 @@ def layDanhSachLichSuKham(
 def layDangKyKhamCuaBenhNhan(patient_id: int) -> list[ChiTietDanhSachKham]:
     return list(db.session.scalars(
         db.select(ChiTietDanhSachKham)
-        .options(joinedload(ChiTietDanhSachKham.benhNhan))
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .options(
+            joinedload(ChiTietDanhSachKham.benhNhan),
+            joinedload(ChiTietDanhSachKham.danhSachKham),
+        )
         .where(ChiTietDanhSachKham.maBN == patient_id)
         .order_by(
-            ChiTietDanhSachKham.ngayKham.desc(),
+            DanhSachKham.ngayKham.desc(),
             ChiTietDanhSachKham.ngayDangKy.desc(),
         )
     ))
@@ -201,8 +205,10 @@ def ngayHienTaiPhongKham() -> date:
 def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
     limit = layGioiHanBenhNhanNgay(lock=True)
     used_slots = set(db.session.scalars(
-        db.select(ChiTietDanhSachKham.soThuTu).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham.soThuTu)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
             ChiTietDanhSachKham.soThuTu.is_not(None),
         ).with_for_update()
@@ -215,8 +221,9 @@ def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
 def _kiemTraNgayKhamChuaChot(exam_date: date) -> None:
     confirmed_registration = db.session.scalar(
         db.select(ChiTietDanhSachKham.maDSKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
         .where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
         )
         .limit(1)
@@ -233,8 +240,10 @@ def layDanhSachKham(
     exam_date: date,
 ) -> tuple[list[ChiTietDanhSachKham], list[ChiTietDanhSachKham]]:
     active = list(db.session.scalars(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
         ).options(joinedload(ChiTietDanhSachKham.benhNhan)).order_by(
             ChiTietDanhSachKham.soThuTu,
@@ -245,8 +254,14 @@ def layDanhSachKham(
     waiting = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.trangThai == "CHO_DUYET",
-        ).options(joinedload(ChiTietDanhSachKham.benhNhan)).order_by(
-            ChiTietDanhSachKham.ngayKham,
+        ).options(
+            joinedload(ChiTietDanhSachKham.benhNhan),
+            joinedload(ChiTietDanhSachKham.danhSachKham),
+        ).join(
+            DanhSachKham,
+            DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham,
+        ).order_by(
+            DanhSachKham.ngayKham,
             ChiTietDanhSachKham.ngayDangKy,
             ChiTietDanhSachKham.maBN,
         )
@@ -264,17 +279,19 @@ def layLichSuDanhSachDaChot() -> list[dict]:
             BenhNhan.namSinh.label("birth_year"),
         )
         .join(BenhNhan, BenhNhan.maBN == ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
         .where(ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN")
         .order_by(
-            ChiTietDanhSachKham.ngayKham.desc(),
+            DanhSachKham.ngayKham.desc(),
             ChiTietDanhSachKham.soThuTu,
             ChiTietDanhSachKham.maBN,
         )
     )
     history: dict[date, dict] = {}
     for registration, name, phone, gender, birth_year in rows:
-        day = history.setdefault(registration.ngayKham, {
-            "date": registration.ngayKham,
+        exam_date = registration.danhSachKham.ngayKham
+        day = history.setdefault(exam_date, {
+            "date": exam_date,
             "registrations": [],
         })
         day["registrations"].append({
@@ -363,9 +380,11 @@ def dangKyKham(
     exam_date = exam_date or ngayHienTaiPhongKham()
     layGioiHanBenhNhanNgay(lock=True)
     duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maBN).where(
+        db.select(ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
             ChiTietDanhSachKham.maBN == patient.maBN,
-            ChiTietDanhSachKham.ngayKham >= exam_date,
+            DanhSachKham.ngayKham >= exam_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         ).with_for_update()
     )
@@ -382,7 +401,6 @@ def dangKyKham(
         registration = ChiTietDanhSachKham(
             danhSachKham=exam_day,
             benhNhan=patient,
-            ngayKham=exam_date,
             soThuTu=slot,
             ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
             trangThai="CHO_KHAM",
@@ -411,9 +429,11 @@ def chuyenDangKyChoCu() -> int:
         while True:
             candidate, slot = _timNgayKhamConChoGanNhat(candidate)
             duplicate = db.session.scalar(
-                db.select(ChiTietDanhSachKham.maBN).where(
+                db.select(ChiTietDanhSachKham.maBN)
+                .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+                .where(
                     ChiTietDanhSachKham.maBN == registration.maBN,
-                    ChiTietDanhSachKham.ngayKham == candidate,
+                    DanhSachKham.ngayKham == candidate,
                     ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
                 ).with_for_update()
             )
@@ -428,14 +448,12 @@ def chuyenDangKyChoCu() -> int:
             ChiTietDanhSachKham, (exam_day.maDSKham, registration.maBN)
         )
         if existing is not None and existing is not registration:
-            existing.ngayKham = candidate
             existing.soThuTu = slot
             existing.ngayDangKy = registration.ngayDangKy
             existing.trangThai = "CHO_KHAM"
             db.session.delete(registration)
         else:
             registration.danhSachKham = exam_day
-            registration.ngayKham = candidate
             registration.soThuTu = slot
             registration.trangThai = "CHO_KHAM"
         db.session.flush()
@@ -459,9 +477,10 @@ def themBenhNhan(
         )
     duplicate = db.session.scalar(
         db.select(ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
         .where(
             ChiTietDanhSachKham.maBN == patient.maBN,
-            ChiTietDanhSachKham.ngayKham == exam_date,
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         )
     )
@@ -477,7 +496,6 @@ def themBenhNhan(
         registration = ChiTietDanhSachKham(
             danhSachKham=exam_day,
             benhNhan=patient,
-            ngayKham=exam_date,
             soThuTu=slot,
             ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
             trangThai="CHO_KHAM",
@@ -519,7 +537,7 @@ def capNhatLuotKham(
         db.select(ChiTietDanhSachKham.maBN)
         .join(BenhNhan)
         .where(
-            ChiTietDanhSachKham.ngayKham == registration.ngayKham,
+            ChiTietDanhSachKham.maDSKham == registration.maDSKham,
             BenhNhan.soDienThoai == phone,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
             or_(
@@ -579,9 +597,11 @@ def duyetLuotChoCu(
     _kiemTraNgayKhamChuaChot(target_date)
 
     duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maBN).where(
+        db.select(ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
             ChiTietDanhSachKham.maBN == registration.maBN,
-            ChiTietDanhSachKham.ngayKham == target_date,
+            DanhSachKham.ngayKham == target_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
             or_(
                 ChiTietDanhSachKham.maDSKham != registration.maDSKham,
@@ -604,7 +624,6 @@ def duyetLuotChoCu(
         ChiTietDanhSachKham, (exam_day.maDSKham, registration.maBN)
     )
     if existing is not None and existing is not registration:
-        existing.ngayKham = target_date
         existing.soThuTu = slot
         existing.ngayDangKy = registration.ngayDangKy
         existing.trangThai = "CHO_KHAM"
@@ -612,7 +631,6 @@ def duyetLuotChoCu(
         registration = existing
     else:
         registration.danhSachKham = exam_day
-        registration.ngayKham = target_date
         registration.soThuTu = slot
         registration.trangThai = "CHO_KHAM"
     _luuThayDoiDanhSachKham()
@@ -624,15 +642,19 @@ def xacNhanDanhSach(
 ) -> list[ChiTietDanhSachKham]:
     layGioiHanBenhNhanNgay(lock=True)
     registrations = list(db.session.scalars(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(("CHO_KHAM", "DA_MO_LAI")),
         ).with_for_update()
     ))
     if not registrations:
         if db.session.scalar(
-            db.select(ChiTietDanhSachKham.maDSKham).where(
-                ChiTietDanhSachKham.ngayKham == exam_date,
+            db.select(ChiTietDanhSachKham.maDSKham)
+            .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+            .where(
+                DanhSachKham.ngayKham == exam_date,
                 ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
             )
         ) is not None:
@@ -652,8 +674,10 @@ def moLaiDanhSachKham(exam_date: date) -> int:
 
     layGioiHanBenhNhanNgay(lock=True)
     registrations = list(db.session.scalars(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
         ).with_for_update()
     ))

@@ -283,6 +283,32 @@ def lenhChuyenKhoaGhepChiTietDanhSach(maintenance: bool) -> None:
     )
 
 
+@app.cli.command("remove-exam-detail-date-column")
+@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
+def lenhXoaNgayKhamChiTietDanhSach(maintenance: bool) -> None:
+    """Remove the redundant NgayKham column from exam-list details."""
+    from app.migration import loaiBoNgayKhamKhoiChiTietDanhSachKham
+
+    if not maintenance:
+        raise click.ClickException(
+            "Stop all application writers and pass --maintenance."
+        )
+    try:
+        changed = loaiBoNgayKhamKhoiChiTietDanhSachKham(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Exam-detail date-column removal failed.")
+        raise click.ClickException(
+            "Could not remove NgayKham; inspect the database before retrying."
+        ) from None
+    click.echo(
+        "Removed NgayKham from ChiTietDanhSachKham."
+        if changed
+        else "NgayKham is already absent; no changes made."
+    )
+
+
 @app.cli.command("drop-nurse-exam-profile-columns")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
 def lenhXoaCotHoSoTrung(maintenance: bool) -> None:

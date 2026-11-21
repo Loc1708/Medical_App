@@ -67,34 +67,32 @@ class AdminFeatureTests(unittest.TestCase):
         return dict(maThuoc="T001", tenThuoc="Thuốc kiểm thử", donGia="1234.50",
                     soLuongTon="10", maDonVi="SAMPLE-VIEN", **changes)
 
-    def test_flask_admin_is_admin_only_and_read_only(self):
-        index = self.client.get("/admin-console/")
-        self.assertEqual(index.status_code, 200)
-        self.assertIn("Flask-Admin", self.client.get("/admin/accounts").get_data(as_text=True))
-        for endpoint in ("console_accounts", "console_patients", "console_employees",
-                         "console_medicines", "console_invoices", "console_regulations"):
-            response = self.client.get(f"/admin-console/{endpoint}/")
-            self.assertEqual(response.status_code, 200, endpoint)
-        accounts = self.client.get("/admin-console/console_accounts/").get_data(as_text=True)
-        self.assertIn("admin", accounts)
-        self.assertNotIn(self.admin.matKhau, accounts)
-        medicine = db.session.get(Thuoc, "SAMPLE-T001")
-        original_name = medicine.tenThuoc
-        for path, data in (
-            ("/admin-console/console_medicines/new/", self.medicine_form()),
-            ("/admin-console/console_medicines/edit/?id=SAMPLE-T001", self.medicine_form()),
-            ("/admin-console/console_medicines/delete/", {"id": "SAMPLE-T001"}),
-        ):
-            self.assertEqual(self.post(path, data).status_code, 302)
-        db.session.expire_all()
-        self.assertEqual(db.session.get(Thuoc, "SAMPLE-T001").tenThuoc, original_name)
-        self.assertIsNone(db.session.get(Thuoc, "T001"))
+    def test_admin_interface_has_no_separate_flask_admin_console(self):
+        from app.admin import QuanTriPhongMach
+
+        pages = {
+            "/admin/accounts": "admin_accounts",
+            "/admin/medicines": "admin_medicines",
+            "/admin/units": "admin_units",
+            "/admin/regulations": "admin_regulations",
+            "/admin/reports": "admin_reports",
+        }
+        adapter = app.url_map.bind("localhost")
+        for path, endpoint in pages.items():
+            resolved, _ = adapter.match(path, method="GET")
+            self.assertEqual(resolved, f"quan_tri.{endpoint}")
+            self.assertIsInstance(app.view_functions[resolved].__self__, QuanTriPhongMach)
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            self.assertNotIn("Flask-Admin (chỉ xem)", html)
+            self.assertIn(f'class="nav-item active" href="{path}"', html)
+        self.assertEqual(self.client.get("/admin-console/").status_code, 404)
 
         guest = app.test_client()
-        for path in ("/admin-console/", "/admin-console/console_medicines/"):
-            self.assertEqual(guest.get(path).status_code, 302)
+        self.assertEqual(guest.get("/admin/accounts").status_code, 302)
         self.login("patient", guest)
-        for path in ("/admin-console/", "/admin-console/console_medicines/"):
+        for path in pages:
             self.assertEqual(guest.get(path).status_code, 403)
 
     def exam(self, code, day, *, status="DA_LAP", medicines=(), invoice=None):

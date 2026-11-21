@@ -1,7 +1,7 @@
 {% extends "layout/base.html" %}
 {% set heading = 'Quản lý đơn vị thuốc' if unit_mode else 'Quản lý thuốc' %}
-{% set list_endpoint = 'admin_units' if unit_mode else 'admin_medicines' %}
-{% set edit_endpoint = 'admin_unit_edit' if unit_mode else 'admin_medicine_edit' %}
+{% set list_endpoint = 'quan_tri.admin_units' if unit_mode else 'quan_tri.admin_medicines' %}
+{% set edit_endpoint = 'quan_tri.admin_unit_edit' if unit_mode else 'quan_tri.admin_medicine_edit' %}
 {% block title %}{{ heading }} · Phòng mạch Nhịp Sống{% endblock %}
 {% block content %}
 <h1 class="h3">{{ heading }}</h1>
@@ -47,7 +47,7 @@
                                aria-label="Sửa {{ code }}" title="Sửa">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5l5 5M4 20l4-1L20 7a2 2 0 0 0-3-3L5 16zM12 4H4v16h16v-8"/></svg>
                             </a>
-                            <form method="post" action="{{ url_for('admin_medicine_delete', code=code) }}" data-catalog-delete data-code="{{ code }}">
+                            <form method="post" action="{{ url_for('quan_tri.admin_medicine_delete', code=code) }}" data-catalog-delete data-code="{{ code }}">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="q" value="{{ keyword }}">
                                 <button class="catalog-icon" aria-label="Xóa {{ code }}" title="Xóa">

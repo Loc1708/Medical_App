@@ -69,7 +69,7 @@ def dangXuat():
 @login_required
 def trangDieuKhien():
     if current_user.role == Role.ADMIN:
-        return redirect(url_for("admin_accounts"))
+        return redirect(url_for("quan_tri.admin_accounts"))
     if current_user.role == Role.DOCTOR:
         clinic_timezone = timezone(timedelta(hours=7))
         exam_date = datetime.now(clinic_timezone).date()

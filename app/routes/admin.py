@@ -4,7 +4,7 @@ import re
 from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
-from app import app, dao, db
+from app import dao, db
 from app.models import (
     BenhNhan, DonViThuoc, NhanVien, QuyDinh, Role, TaiKhoan,
     TEN_DON_VI_THUOC_CHUAN, Thuoc,
@@ -12,7 +12,6 @@ from app.models import (
 from app.utils import layDuLieuTaiKhoan, yeuCauVaiTro
 
 
-@app.get("/admin/accounts", endpoint="admin_accounts")
 @yeuCauVaiTro(Role.ADMIN)
 def quanLyTaiKhoan():
     keyword = request.args.get("q", "").strip()[:80]
@@ -29,7 +28,7 @@ def quanLyTaiKhoan():
             selected_role = Role(role_filter)
         except ValueError:
             flash("Bộ lọc vai trò không hợp lệ.", "danger")
-            return redirect(url_for("admin_accounts"))
+            return redirect(url_for("quan_tri.admin_accounts"))
         statement = statement.where(TaiKhoan.role == selected_role)
     page = db.paginate(statement.order_by(TaiKhoan.tenDangNhap), per_page=10, max_per_page=10)
     return render_template(
@@ -37,7 +36,6 @@ def quanLyTaiKhoan():
     )
 
 
-@app.route("/admin/accounts/new", methods=["GET", "POST"], endpoint="admin_account_create")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriThemTaiKhoan():
     error_message = None
@@ -51,11 +49,10 @@ def quanTriThemTaiKhoan():
             flash("Đã tạo tài khoản và hồ sơ liên quan.", "success")
             if request.args.get("modal") == "1":
                 return "", 204
-            return redirect(url_for("admin_accounts"))
+            return redirect(url_for("quan_tri.admin_accounts"))
     return _hienThiBieuMauTaiKhoan(None, request.form, error_message)
 
 
-@app.route("/admin/accounts/<int:account_id>/edit", methods=["GET", "POST"], endpoint="admin_account_edit")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriSuaTaiKhoan(account_id: int):
     account = db.get_or_404(TaiKhoan, account_id)
@@ -70,7 +67,7 @@ def quanTriSuaTaiKhoan(account_id: int):
             flash("Đã cập nhật tài khoản. Quyền mới được áp dụng từ yêu cầu tiếp theo.", "success")
             if request.args.get("modal") == "1":
                 return "", 204
-            return redirect(url_for("admin_accounts"))
+            return redirect(url_for("quan_tri.admin_accounts"))
         values = request.form
     else:
         patient, employee = account.benhNhan, account.nhanVien
@@ -104,7 +101,6 @@ def _hienThiBieuMauTaiKhoan(account, values, error_message):
     ), 422 if modal and error_message else 200
 
 
-@app.post("/admin/accounts/<int:account_id>/status", endpoint="admin_account_status")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriDoiTrangThaiTaiKhoan(account_id: int):
     active = request.form.get("active")
@@ -117,12 +113,11 @@ def quanTriDoiTrangThaiTaiKhoan(account_id: int):
     else:
         flash("Đã cập nhật trạng thái tài khoản.", "success")
     return redirect(url_for(
-        "admin_accounts", q=request.form.get("q", ""), role=request.form.get("filter_role", ""),
+        "quan_tri.admin_accounts", q=request.form.get("q", ""), role=request.form.get("filter_role", ""),
         page=request.form.get("page", "1"),
     ))
 
 
-@app.get("/admin/medicines", endpoint="admin_medicines")
 @yeuCauVaiTro(Role.ADMIN)
 def quanLyThuoc():
     keyword = request.args.get("q", "").strip()[:100]
@@ -133,7 +128,6 @@ def quanLyThuoc():
     return render_template("admin/catalog.html", page=page, keyword=keyword, unit_mode=False)
 
 
-@app.get("/admin/units", endpoint="admin_units")
 @yeuCauVaiTro(Role.ADMIN)
 def quanLyDonViThuoc():
     keyword = request.args.get("q", "").strip()[:50]
@@ -162,7 +156,7 @@ def _chinhSuaThuoc(code: str | None):
             flash("Đã lưu thuốc.", "success")
             if request.args.get("modal") == "1":
                 return "", 204
-            return redirect(url_for("admin_medicines"))
+            return redirect(url_for("quan_tri.admin_medicines"))
     if request.method == "POST":
         values = request.form
     elif isinstance(item, Thuoc):
@@ -185,21 +179,16 @@ def _chinhSuaThuoc(code: str | None):
     ), 422 if modal and error_message else 200
 
 
-@app.route("/admin/medicines/new", methods=["GET", "POST"], endpoint="admin_medicine_edit")
-@app.route("/admin/medicines/<code>/edit", methods=["GET", "POST"], endpoint="admin_medicine_edit")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriChinhSuaThuoc(code: str | None = None):
     return _chinhSuaThuoc(code)
 
 
-@app.route("/admin/units/new", methods=["GET", "POST"], endpoint="admin_unit_edit")
-@app.route("/admin/units/<code>/edit", methods=["GET", "POST"], endpoint="admin_unit_edit")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriChinhSuaDonVi(code: str | None = None):
     abort(405, description="Đơn vị thuốc được cố định theo quy định.")
 
 
-@app.post("/admin/medicines/<code>/delete", endpoint="admin_medicine_delete")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriXoaThuoc(code: str):
     try:
@@ -209,16 +198,14 @@ def quanTriXoaThuoc(code: str):
         flash(str(error), "danger")
     else:
         flash("Đã xóa thuốc.", "success")
-    return redirect(url_for("admin_medicines", q=request.form.get("q", "")))
+    return redirect(url_for("quan_tri.admin_medicines", q=request.form.get("q", "")))
 
 
-@app.post("/admin/units/<code>/delete", endpoint="admin_unit_delete")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriXoaDonVi(code: str):
     abort(405, description="Đơn vị thuốc được cố định theo quy định.")
 
 
-@app.route("/admin/regulations", methods=["GET", "POST"], endpoint="admin_regulations")
 @yeuCauVaiTro(Role.ADMIN)
 def quanLyQuyDinh():
     error_message = None
@@ -231,7 +218,7 @@ def quanLyQuyDinh():
             error_message = str(error)
         else:
             flash("Đã cập nhật quy định. Không thay đổi số tiền trên hóa đơn cũ.", "success")
-            return redirect(url_for("admin_regulations"))
+            return redirect(url_for("quan_tri.admin_regulations"))
     rules = {rule.maQD: rule for rule in db.session.scalars(db.select(QuyDinh))}
     ready = {"TIEN_KHAM", "SO_BENH_NHAN_TOI_DA"}.issubset(rules)
     if request.method == "GET" and not ready:
@@ -244,7 +231,6 @@ def quanLyQuyDinh():
                            ready=ready)
 
 
-@app.get("/admin/reports", endpoint="admin_reports")
 @yeuCauVaiTro(Role.ADMIN)
 def xemBaoCao():
     current = datetime.now(timezone(timedelta(hours=7)))

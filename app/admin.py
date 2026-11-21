@@ -1,13 +1,13 @@
-from flask import abort
-from flask_admin import Admin, AdminIndexView
-from flask_admin.contrib.sqla import ModelView
+from flask import abort, redirect, url_for
+from flask_admin import Admin, AdminIndexView, expose
 from flask_login import current_user
 
-from app import app, db, login
-from app.models import BenhNhan, HoaDon, NhanVien, QuyDinh, Role, TaiKhoan, Thuoc
+from app import app, login
+from app.models import Role
+from app.routes import admin as xuLyQuanTri
 
 
-class QuyenQuanTri:
+class QuanTriPhongMach(AdminIndexView):
     def is_accessible(self):
         return current_user.is_authenticated and current_user.role == Role.ADMIN
 
@@ -16,61 +16,59 @@ class QuyenQuanTri:
             return login.unauthorized()
         abort(403)
 
+    @expose("/")
+    def index(self):
+        return redirect(url_for("quan_tri.admin_accounts"))
 
-class TrangChuQuanTri(QuyenQuanTri, AdminIndexView):
-    pass
+    @expose("/accounts")
+    def admin_accounts(self):
+        return xuLyQuanTri.quanLyTaiKhoan()
+
+    @expose("/accounts/new", methods=("GET", "POST"))
+    def admin_account_create(self):
+        return xuLyQuanTri.quanTriThemTaiKhoan()
+
+    @expose("/accounts/<int:account_id>/edit", methods=("GET", "POST"))
+    def admin_account_edit(self, account_id):
+        return xuLyQuanTri.quanTriSuaTaiKhoan(account_id)
+
+    @expose("/accounts/<int:account_id>/status", methods=("POST",))
+    def admin_account_status(self, account_id):
+        return xuLyQuanTri.quanTriDoiTrangThaiTaiKhoan(account_id)
+
+    @expose("/medicines")
+    def admin_medicines(self):
+        return xuLyQuanTri.quanLyThuoc()
+
+    @expose("/units")
+    def admin_units(self):
+        return xuLyQuanTri.quanLyDonViThuoc()
+
+    @expose("/medicines/new", methods=("GET", "POST"))
+    @expose("/medicines/<code>/edit", methods=("GET", "POST"))
+    def admin_medicine_edit(self, code=None):
+        return xuLyQuanTri.quanTriChinhSuaThuoc(code)
+
+    @expose("/units/new", methods=("GET", "POST"))
+    @expose("/units/<code>/edit", methods=("GET", "POST"))
+    def admin_unit_edit(self, code=None):
+        return xuLyQuanTri.quanTriChinhSuaDonVi(code)
+
+    @expose("/medicines/<code>/delete", methods=("POST",))
+    def admin_medicine_delete(self, code):
+        return xuLyQuanTri.quanTriXoaThuoc(code)
+
+    @expose("/units/<code>/delete", methods=("POST",))
+    def admin_unit_delete(self, code):
+        return xuLyQuanTri.quanTriXoaDonVi(code)
+
+    @expose("/regulations", methods=("GET", "POST"))
+    def admin_regulations(self):
+        return xuLyQuanTri.quanLyQuyDinh()
+
+    @expose("/reports")
+    def admin_reports(self):
+        return xuLyQuanTri.xemBaoCao()
 
 
-class BangChiXem(QuyenQuanTri, ModelView):
-    can_create = False
-    can_edit = False
-    can_delete = False
-    can_export = False
-    can_view_details = False
-
-
-class BangTaiKhoan(BangChiXem):
-    column_list = ("maTK", "tenDangNhap", "role", "trangThai")
-    column_searchable_list = ("tenDangNhap",)
-
-
-class BangBenhNhan(BangChiXem):
-    column_list = ("maBN", "hoTen", "gioiTinh", "namSinh", "soDienThoai", "diaChi")
-    column_searchable_list = ("hoTen",)
-
-
-class BangNhanVien(BangChiXem):
-    column_list = ("maNV", "hoTen", "soDienThoai", "maTK")
-    column_searchable_list = ("hoTen",)
-
-
-class BangThuoc(BangChiXem):
-    column_list = ("maThuoc", "tenThuoc", "maDonVi", "donGia", "soLuongTon")
-    column_searchable_list = ("maThuoc", "tenThuoc")
-
-
-class BangHoaDon(BangChiXem):
-    column_list = (
-        "maHoaDon", "maPhieuKham", "maNV", "ngayLap", "tienKham",
-        "tienThuoc", "tongTien", "phuongThuc", "trangThai",
-    )
-
-
-class BangQuyDinh(BangChiXem):
-    column_list = ("maQD", "tenQuyDinh", "giaTri")
-
-
-quanTri = Admin(
-    app,
-    name="Quản trị dữ liệu",
-    index_view=TrangChuQuanTri(endpoint="flask_admin", url="/admin-console"),
-)
-for view, model, name, endpoint in (
-    (BangTaiKhoan, TaiKhoan, "Tài khoản", "console_accounts"),
-    (BangBenhNhan, BenhNhan, "Bệnh nhân", "console_patients"),
-    (BangNhanVien, NhanVien, "Nhân viên", "console_employees"),
-    (BangThuoc, Thuoc, "Thuốc", "console_medicines"),
-    (BangHoaDon, HoaDon, "Hóa đơn", "console_invoices"),
-    (BangQuyDinh, QuyDinh, "Quy định", "console_regulations"),
-):
-    quanTri.add_view(view(model, db.session, name=name, endpoint=endpoint))
+quanTri = Admin(app, index_view=QuanTriPhongMach(endpoint="quan_tri", url="/admin"))

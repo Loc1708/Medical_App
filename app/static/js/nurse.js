@@ -118,11 +118,12 @@ if (nurseApp) {
         return button;
     }
 
-    function makeIconButton(label, action, id) {
+    function taoNutBieuTuong(label, action, listId, patientId) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "catalog-icon";
-        button.dataset[action] = id;
+        button.dataset[`${action}ListId`] = listId;
+        button.dataset[`${action}PatientId`] = patientId;
         button.setAttribute("aria-label", label);
         button.title = label;
 
@@ -292,7 +293,9 @@ if (nurseApp) {
                 const actionsCell = document.createElement("td");
                 const actions = document.createElement("div");
                 actions.className = "nurse-row-actions";
-                actions.append(makeIconButton("Hủy lượt khám", "cancelPatient", patient.id));
+                actions.append(taoNutBieuTuong(
+                    "Hủy lượt khám", "cancelPatient", patient.listId, patient.patientId
+                ));
                 actionsCell.append(actions);
                 row.append(actionsCell);
                 patientRows.append(row);
@@ -310,16 +313,21 @@ if (nurseApp) {
         renderPatients();
     }
 
-    async function cancelPatient(patientId) {
+    async function huyLuotKham(listId, patientId) {
         const patient = activePatients
-            .find(item => String(item.id) === String(patientId));
+            .find(item => (
+                String(item.listId) === String(listId)
+                && String(item.patientId) === String(patientId)
+            ));
         if (!patient || !window.confirm(`Hủy lượt khám của ${patient.name}?`)) return;
         try {
-            const result = await requestApi(`/nurse/api/lists/${patient.id}`, {
+            const result = await goiApi(
+                `/nurse/api/lists/${patient.listId}/${patient.patientId}`, {
                 method: "DELETE",
-            });
-            await refreshDay();
-            showStatus(result.message, "success");
+                }
+            );
+            await taiLaiDanhSachNgay();
+            hienThiTrangThai(result.message, "success");
         } catch (error) {
             showStatus(error.message, "error");
         }
@@ -432,8 +440,13 @@ if (nurseApp) {
     });
 
     patientRows.addEventListener("click", async event => {
-        const cancelButton = event.target.closest("[data-cancel-patient]");
-        if (cancelButton) await cancelPatient(cancelButton.dataset.cancelPatient);
+        const cancelButton = event.target.closest("[data-cancel-patient-list-id]");
+        if (cancelButton) {
+            await huyLuotKham(
+                cancelButton.dataset.cancelPatientListId,
+                cancelButton.dataset.cancelPatientPatientId,
+            );
+        }
     });
     pagination.addEventListener("click", event => {
         const button = event.target.closest("[data-page]");

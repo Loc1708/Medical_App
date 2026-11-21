@@ -61,7 +61,8 @@ def _kiemTraDuLieuKham(payload: object) -> dict:
 def _chuyenLuotKhamThanhJson(registration) -> dict:
     patient = registration.benhNhan
     return {
-        "id": registration.maCTDSKham,
+        "listId": registration.maDSKham,
+        "patientId": registration.maBN,
         "name": patient.hoTen,
         "gender": patient.gioiTinh,
         "birthYear": patient.namSinh,
@@ -151,12 +152,15 @@ def yTaThemLuotKham():
                    message="Đã lưu bệnh nhân vào danh sách khám."), 201
 
 
-@app.put("/nurse/api/lists/<int:registration_id>", endpoint="nurse_update_exam")
+@app.put(
+    "/nurse/api/lists/<int:maDSKham>/<int:maBN>",
+    endpoint="nurse_update_exam",
+)
 @yeuCauVaiTro(Role.NURSE)
-def yTaCapNhatLuotKham(registration_id: int):
+def yTaCapNhatLuotKham(maDSKham: int, maBN: int):
     try:
         data = _kiemTraDuLieuKham(request.get_json(silent=True))
-        registration = dao.capNhatLuotKham(registration_id, **data)
+        registration = dao.capNhatLuotKham(maDSKham, maBN, **data)
     except LookupError as error:
         return jsonify(error=str(error)), 404
     except ValueError as error:
@@ -169,11 +173,14 @@ def yTaCapNhatLuotKham(registration_id: int):
     return jsonify(patient=_chuyenLuotKhamThanhJson(registration), message="Đã cập nhật bệnh nhân.")
 
 
-@app.delete("/nurse/api/lists/<int:registration_id>", endpoint="nurse_cancel_exam")
+@app.delete(
+    "/nurse/api/lists/<int:maDSKham>/<int:maBN>",
+    endpoint="nurse_cancel_exam",
+)
 @yeuCauVaiTro(Role.NURSE)
-def yTaHuyLuotKham(registration_id: int):
+def yTaHuyLuotKham(maDSKham: int, maBN: int):
     try:
-        dao.huyLuotKham(registration_id)
+        dao.huyLuotKham(maDSKham, maBN)
     except LookupError as error:
         return jsonify(error=str(error)), 404
     except SQLAlchemyError:
@@ -183,9 +190,12 @@ def yTaHuyLuotKham(registration_id: int):
     return jsonify(message="Đã hủy lượt khám.")
 
 
-@app.post("/nurse/api/lists/<int:registration_id>/approve", endpoint="nurse_approve_exam")
+@app.post(
+    "/nurse/api/lists/<int:maDSKham>/<int:maBN>/approve",
+    endpoint="nurse_approve_exam",
+)
 @yeuCauVaiTro(Role.NURSE)
-def yTaDuyetLuotChoCu(registration_id: int):
+def yTaDuyetLuotChoCu(maDSKham: int, maBN: int):
     try:
         payload = request.get_json(silent=True)
         target_date = _layNgayKham(
@@ -193,7 +203,8 @@ def yTaDuyetLuotChoCu(registration_id: int):
         )
         nurse = current_user.nhanVien
         registration = dao.duyetLuotChoCu(
-            registration_id,
+            maDSKham,
+            maBN,
             target_date,
             nurse_id=nurse.maNV if nurse else None,
         )

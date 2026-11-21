@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, inspect, text
 from app import dao, db
 from app.index import app
 from app.migration import (
+    chuyenChiTietDanhSachKhamSangKhoaGhep,
     xoaCotHoSoTrung,
     nangCapCauTrucDanhSachKham,
     nangCapCauTrucHangCho,
@@ -88,6 +89,15 @@ class NurseQueueTests(unittest.TestCase):
             headers={"X-CSRF-Token": token},
         )
 
+    def _registration_key(self, registration):
+        return registration.maDSKham, registration.maBN
+
+    def _registration_key_from_json(self, patient):
+        return patient["listId"], patient["patientId"]
+
+    def _registration_path(self, list_id, patient_id, suffix=""):
+        return f"/nurse/api/lists/{list_id}/{patient_id}{suffix}"
+
     def _patient(self, index, exam_date="2026-11-14"):
         patient = BenhNhan(
             hoTen=f"Bệnh nhân {index}",
@@ -112,7 +122,7 @@ class NurseQueueTests(unittest.TestCase):
         if day is None:
             day = DanhSachKham(ngayKham=exam_date)
         registration = ChiTietDanhSachKham(
-            danhSachKham=day, benhNhan=patient, ngayKham=exam_date,
+            danhSachKham=day, benhNhan=patient,
             ngayDangKy=datetime.now(), trangThai="CHO_DUYET",
         )
         db.session.add(registration)
@@ -179,29 +189,33 @@ class NurseQueueTests(unittest.TestCase):
         exam_date = dao.ngayHienTaiPhongKham().isoformat()
         first = self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
         waiting = self._legacy_waiting(2, date.fromisoformat(exam_date))
-        first_id = first.get_json()["patient"]["id"]
-        waiting_id = waiting.maCTDSKham
+        first_key = self._registration_key_from_json(first.get_json()["patient"])
+        waiting_key = self._registration_key(waiting)
 
         blocked = self._api(
-            "POST", f"/nurse/api/lists/{waiting_id}/approve", {"date": exam_date}
+            "POST", self._registration_path(*waiting_key, "/approve"),
+            {"date": exam_date},
         )
         self.assertEqual(blocked.status_code, 409)
         self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, waiting_id).trangThai, "CHO_DUYET"
+            db.session.get(ChiTietDanhSachKham, waiting_key).trangThai, "CHO_DUYET"
         )
 
-        cancelled = self._api("DELETE", f"/nurse/api/lists/{first_id}")
+        cancelled = self._api(
+            "DELETE", self._registration_path(*first_key)
+        )
         self.assertEqual(cancelled.status_code, 200)
         approved = self._api(
-            "POST", f"/nurse/api/lists/{waiting_id}/approve", {"date": exam_date}
+            "POST", self._registration_path(*waiting_key, "/approve"),
+            {"date": exam_date},
         )
         self.assertEqual(approved.status_code, 200)
         self.assertEqual(approved.get_json()["patient"]["slot"], 1)
         self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, waiting_id).trangThai, "CHO_KHAM"
+            db.session.get(ChiTietDanhSachKham, waiting_key).trangThai, "CHO_KHAM"
         )
         self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, first_id).trangThai, "DA_HUY"
+            db.session.get(ChiTietDanhSachKham, first_key).trangThai, "DA_HUY"
         )
 
     def test_waiting_list_remains_visible_and_can_move_to_selected_future_date(self):
@@ -214,7 +228,7 @@ class NurseQueueTests(unittest.TestCase):
         )
         waiting = self._legacy_waiting(2, source_date)
         self.assertEqual(first.status_code, 201)
-        waiting_id = waiting.maCTDSKham
+        waiting_key = self._registration_key(waiting)
 
         target_list = self._api(
             "GET", f"/nurse/api/lists?date={target_date.isoformat()}"
@@ -228,15 +242,19 @@ class NurseQueueTests(unittest.TestCase):
 
         approved = self._api(
             "POST",
-            f"/nurse/api/lists/{waiting_id}/approve",
+            self._registration_path(*waiting_key, "/approve"),
             {"date": target_date.isoformat()},
         )
         self.assertEqual(approved.status_code, 200)
-        self.assertEqual(approved.get_json()["patient"]["id"], waiting_id)
+        approved_patient = approved.get_json()["patient"]
+        self.assertEqual(approved_patient["patientId"], waiting.maBN)
         self.assertEqual(
-            approved.get_json()["patient"]["examDate"], target_date.isoformat()
+            approved_patient["examDate"], target_date.isoformat()
         )
-        registration = db.session.get(ChiTietDanhSachKham, waiting_id)
+        registration = db.session.get(
+            ChiTietDanhSachKham,
+            self._registration_key_from_json(approved_patient),
+        )
         self.assertEqual(registration.trangThai, "CHO_KHAM")
         self.assertEqual(registration.ngayKham, target_date)
 
@@ -414,7 +432,7 @@ class NurseQueueTests(unittest.TestCase):
         )
         waiting = self._legacy_waiting(2, exam_date)
         self.assertEqual(active.status_code, 201)
-        waiting_id = waiting.maCTDSKham
+        waiting_key = self._registration_key(waiting)
         self._api(
             "POST",
             "/nurse/api/lists/confirm",
@@ -423,14 +441,16 @@ class NurseQueueTests(unittest.TestCase):
 
         rejected = self._api(
             "POST",
-            f"/nurse/api/lists/{waiting_id}/approve",
+            self._registration_path(
+                waiting_key[0], waiting_key[1], "/approve"
+            ),
             {"date": exam_date.isoformat()},
         )
 
         self.assertEqual(rejected.status_code, 409)
         self.assertIn("đã được xác nhận và chốt", rejected.get_json()["error"])
         self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, waiting_id).trangThai,
+            db.session.get(ChiTietDanhSachKham, waiting_key).trangThai,
             "CHO_DUYET",
         )
 
@@ -470,17 +490,19 @@ class NurseQueueTests(unittest.TestCase):
             "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
         )
         waiting = self._legacy_waiting(2, today)
-        registration_id = waiting.maCTDSKham
+        registration_key = self._registration_key(waiting)
 
         past_date = (today - timedelta(days=1)).isoformat()
         rejected = self._api(
             "POST",
-            f"/nurse/api/lists/{registration_id}/approve",
+            self._registration_path(
+                registration_key[0], registration_key[1], "/approve"
+            ),
             {"date": past_date},
         )
         self.assertEqual(rejected.status_code, 400)
         self.assertIn("ngày đã qua", rejected.get_json()["error"])
-        registration = db.session.get(ChiTietDanhSachKham, registration_id)
+        registration = db.session.get(ChiTietDanhSachKham, registration_key)
         self.assertEqual(registration.trangThai, "CHO_DUYET")
         self.assertEqual(registration.ngayKham, today)
 
@@ -546,6 +568,62 @@ class NurseQueueTests(unittest.TestCase):
         confirmed_html = patient_client.get("/dashboard").get_data(as_text=True)
         self.assertIn(registration.ngayKham.strftime("%d/%m/%Y"), confirmed_html)
 
+    def test_patient_can_register_again_after_nurse_cancels_same_list_row(self):
+        exam_date = dao.ngayHienTaiPhongKham()
+        patient = dao.taoTaiKhoan({
+            "tenDangNhap": "patient_cancelled_queue_test",
+            "password": self.password,
+            "role": Role.PATIENT,
+            "hoTen": "Bệnh nhân đăng ký lại",
+            "soDienThoai": "09000000112",
+            "trangThai": True,
+            "namSinh": 1995,
+            "gioiTinh": "Nam",
+            "diaChi": "Địa chỉ kiểm thử",
+        })
+        created = self._api(
+            "POST",
+            "/nurse/api/lists",
+            {
+                "date": exam_date.isoformat(),
+                "patient_code": patient.benhNhan.maHienThi,
+            },
+        )
+        self.assertEqual(created.status_code, 201)
+        registration_key = self._registration_key_from_json(
+            created.get_json()["patient"]
+        )
+
+        cancelled = self._api(
+            "DELETE", self._registration_path(*registration_key)
+        )
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(
+            db.session.get(ChiTietDanhSachKham, registration_key).trangThai,
+            "DA_HUY",
+        )
+
+        patient_client = app.test_client()
+        self._sign_in(patient_client, "patient_cancelled_queue_test")
+        with patient_client.session_transaction() as browser_session:
+            csrf_token = browser_session["csrf_token"]
+        response = patient_client.post(
+            "/patient/exam-registrations",
+            data={"csrf_token": csrf_token},
+        )
+        self.assertEqual(response.status_code, 302)
+
+        restored = db.session.get(ChiTietDanhSachKham, registration_key)
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.trangThai, "CHO_KHAM")
+        self.assertEqual(restored.ngayKham, exam_date)
+        self.assertEqual(
+            db.session.scalar(
+                db.select(db.func.count()).select_from(ChiTietDanhSachKham)
+            ),
+            1,
+        )
+
     def test_patient_registration_skips_full_and_confirmed_days(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
@@ -589,9 +667,9 @@ class NurseQueueTests(unittest.TestCase):
         ).status_code, 201)
         first = self._legacy_waiting(2, today)
         second = self._legacy_waiting(3, today - timedelta(days=1))
-        first_id, second_id = first.maCTDSKham, second.maCTDSKham
+        patient_ids = (first.maBN, second.maBN)
         original_data = {
-            row.maCTDSKham: (row.maBN, row.ngayDangKy)
+            row.maBN: row.ngayDangKy
             for row in (first, second)
         }
 
@@ -604,13 +682,16 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("Moved 2", result.output)
         db.session.expire_all()
-        moved = [db.session.get(ChiTietDanhSachKham, row_id)
-                 for row_id in (first_id, second_id)]
+        moved = list(db.session.scalars(
+            db.select(ChiTietDanhSachKham).where(
+                ChiTietDanhSachKham.maBN.in_(patient_ids)
+            )
+        ))
         self.assertEqual({row.ngayKham for row in moved},
                          {today + timedelta(days=1), today + timedelta(days=2)})
         self.assertTrue(all(row.trangThai == "CHO_KHAM" and row.soThuTu == 1
                             for row in moved))
-        self.assertTrue(all((row.maBN, row.ngayDangKy) == original_data[row.maCTDSKham]
+        self.assertTrue(all(row.ngayDangKy == original_data[row.maBN]
                             for row in moved))
         repeated = runner.invoke(args=["move-waiting-registrations", "--maintenance"])
         self.assertEqual(repeated.exit_code, 0, repeated.output)
@@ -620,7 +701,7 @@ class NurseQueueTests(unittest.TestCase):
         today = dao.ngayHienTaiPhongKham()
         first = self._legacy_waiting(1, today)
         second = self._legacy_waiting(2, today)
-        ids = (first.maCTDSKham, second.maCTDSKham)
+        keys = (self._registration_key(first), self._registration_key(second))
         find_slot = dao._timNgayKhamConChoGanNhat
         with patch("app.dao._timNgayKhamConChoGanNhat",
                    side_effect=[find_slot(today), ValueError("No available date")]):
@@ -630,8 +711,8 @@ class NurseQueueTests(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
         self.assertIn("No available date", result.output)
         db.session.expire_all()
-        for row_id in ids:
-            row = db.session.get(ChiTietDanhSachKham, row_id)
+        for key in keys:
+            row = db.session.get(ChiTietDanhSachKham, key)
             self.assertEqual(row.trangThai, "CHO_DUYET")
             self.assertIsNone(row.soThuTu)
             self.assertEqual(row.ngayKham, today)
@@ -718,6 +799,83 @@ class NurseQueueTests(unittest.TestCase):
 
 
 class NurseQueueMigrationTests(unittest.TestCase):
+    def test_composite_key_migration_archives_and_keeps_latest_duplicate(self):
+        engine = create_engine("sqlite:///:memory:")
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                'CREATE TABLE "BenhNhan" ("MaBN" INTEGER PRIMARY KEY)'
+            )
+            connection.exec_driver_sql(
+                'CREATE TABLE "DanhSachKham" ('
+                '"MaDSKham" INTEGER PRIMARY KEY, "NgayKham" DATE NOT NULL, '
+                '"MaNV" INTEGER, UNIQUE ("MaDSKham", "NgayKham"))'
+            )
+            connection.exec_driver_sql(
+                'CREATE TABLE "ChiTietDanhSachKham" ('
+                '"MaCTDSKham" INTEGER PRIMARY KEY, "MaDSKham" INTEGER NOT NULL, '
+                '"MaBN" INTEGER NOT NULL, "NgayKham" DATE NOT NULL, '
+                '"SoThuTu" INTEGER, "NgayDangKy" DATETIME NOT NULL, '
+                '"TrangThai" VARCHAR(20) NOT NULL, '
+                'FOREIGN KEY ("MaDSKham", "NgayKham") '
+                'REFERENCES "DanhSachKham" ("MaDSKham", "NgayKham"), '
+                'FOREIGN KEY ("MaBN") REFERENCES "BenhNhan" ("MaBN"))'
+            )
+            connection.exec_driver_sql(
+                'CREATE UNIQUE INDEX "uq_ctdsk_ngay_thu_tu" '
+                'ON "ChiTietDanhSachKham" ("NgayKham", "SoThuTu")'
+            )
+            connection.exec_driver_sql(
+                'CREATE INDEX "ix_ctdsk_ngay_trang_thai" '
+                'ON "ChiTietDanhSachKham" ("NgayKham", "TrangThai")'
+            )
+            connection.exec_driver_sql(
+                'INSERT INTO "BenhNhan" ("MaBN") VALUES (1), (2)'
+            )
+            connection.exec_driver_sql(
+                'INSERT INTO "DanhSachKham" ("MaDSKham", "NgayKham") '
+                "VALUES (1, '2026-11-14'), (2, '2026-11-15')"
+            )
+            connection.exec_driver_sql(
+                'INSERT INTO "ChiTietDanhSachKham" VALUES '
+                '(10, 1, 1, "2026-11-14", NULL, "2026-11-14 08:00:00", "DA_HUY"), '
+                '(11, 1, 1, "2026-11-14", 1, "2026-11-14 09:00:00", "CHO_KHAM"), '
+                '(12, 1, 2, "2026-11-14", 2, "2026-11-14 09:05:00", "CHO_KHAM"), '
+                '(13, 2, 1, "2026-11-15", 1, "2026-11-15 09:00:00", "DA_XAC_NHAN")'
+            )
+
+        self.assertTrue(chuyenChiTietDanhSachKhamSangKhoaGhep(engine))
+        self.assertFalse(chuyenChiTietDanhSachKhamSangKhoaGhep(engine))
+        inspector = inspect(engine)
+        self.assertEqual(
+            inspector.get_pk_constraint("ChiTietDanhSachKham")["constrained_columns"],
+            ["MaDSKham", "MaBN"],
+        )
+        self.assertNotIn(
+            "MaCTDSKham",
+            {column["name"] for column in inspector.get_columns("ChiTietDanhSachKham")},
+        )
+        self.assertIn("ChiTietDanhSachKham_legacy", inspector.get_table_names())
+        with engine.connect() as connection:
+            kept = connection.execute(text(
+                'SELECT "TrangThai", "SoThuTu" FROM "ChiTietDanhSachKham" '
+                'WHERE "MaDSKham" = 1 AND "MaBN" = 1'
+            )).one()
+            active_count = connection.execute(text(
+                'SELECT COUNT(*) FROM "ChiTietDanhSachKham"'
+            )).scalar_one()
+            archived_count = connection.execute(text(
+                'SELECT COUNT(*) FROM "ChiTietDanhSachKham_legacy"'
+            )).scalar_one()
+            foreign_key_errors = connection.exec_driver_sql(
+                "PRAGMA foreign_key_check"
+            ).all()
+        self.assertEqual(kept.TrangThai, "CHO_KHAM")
+        self.assertEqual(kept.SoThuTu, 1)
+        self.assertEqual(active_count, 3)
+        self.assertEqual(archived_count, 4)
+        self.assertEqual(foreign_key_errors, [])
+        engine.dispose()
+
     def test_upgrade_preserves_existing_rows_and_is_idempotent(self):
         engine = create_engine("sqlite:///:memory:")
         with engine.begin() as connection:
@@ -783,13 +941,19 @@ class NurseQueueMigrationTests(unittest.TestCase):
             column["name"]
             for column in inspect(engine).get_columns("ChiTietDanhSachKham")
         }
+        detail_primary_key = inspect(engine).get_pk_constraint(
+            "ChiTietDanhSachKham"
+        )["constrained_columns"]
         self.assertTrue({
             "HoTen", "GioiTinh", "NamSinh", "DiaChi",
         }.isdisjoint(detail_columns))
+        self.assertNotIn("MaCTDSKham", detail_columns)
+        self.assertEqual(detail_primary_key, ["MaDSKham", "MaBN"])
         with engine.connect() as connection:
             registration = connection.execute(text(
                 'SELECT "NgayKham", "SoThuTu", "TrangThai" '
-                'FROM "ChiTietDanhSachKham" WHERE "MaCTDSKham" = 1'
+                'FROM "ChiTietDanhSachKham" '
+                'WHERE "MaDSKham" = 1 AND "MaBN" = 1'
             )).one()
             day = connection.execute(text(
                 'SELECT "NgayKham", "MaNV" FROM "DanhSachKham"'
@@ -808,11 +972,11 @@ class NurseQueueMigrationTests(unittest.TestCase):
             ), {"code": "SO_BENH_NHAN_TOI_DA"}).scalar_one()
             foreign_key_errors = connection.exec_driver_sql("PRAGMA foreign_key_check").all()
         self.assertEqual(registration.NgayKham, "2026-11-14")
-        self.assertEqual(registration.SoThuTu, 1)
-        self.assertEqual(registration.TrangThai, "CHO_KHAM")
+        self.assertIsNone(registration.SoThuTu)
+        self.assertEqual(registration.TrangThai, "DA_HUY")
         self.assertEqual(day.NgayKham, "2026-11-14")
         self.assertIsNone(day.MaNV)
-        self.assertEqual(registration_count, 2)
+        self.assertEqual(registration_count, 1)
         self.assertEqual(legacy_count, 2)
         self.assertEqual(patient_count, 1)
         self.assertEqual(rule, 40)

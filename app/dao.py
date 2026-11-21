@@ -12,7 +12,8 @@ from sqlalchemy.orm import joinedload, selectinload
 from app import app, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
-    DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
+    DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan,
+    TEN_DON_VI_THUOC_CHUAN, Thuoc,
 )
 from app.utils import kiemTraMatKhau
 
@@ -174,10 +175,14 @@ def layDanhSachLichSuKham(
 def layDangKyKhamCuaBenhNhan(patient_id: int) -> list[ChiTietDanhSachKham]:
     return list(db.session.scalars(
         db.select(ChiTietDanhSachKham)
-        .options(joinedload(ChiTietDanhSachKham.benhNhan))
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .options(
+            joinedload(ChiTietDanhSachKham.benhNhan),
+            joinedload(ChiTietDanhSachKham.danhSachKham),
+        )
         .where(ChiTietDanhSachKham.maBN == patient_id)
         .order_by(
-            ChiTietDanhSachKham.ngayKham.desc(),
+            DanhSachKham.ngayKham.desc(),
             ChiTietDanhSachKham.ngayDangKy.desc(),
         )
     ))
@@ -200,8 +205,10 @@ def ngayHienTaiPhongKham() -> date:
 def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
     limit = layGioiHanBenhNhanNgay(lock=True)
     used_slots = set(db.session.scalars(
-        db.select(ChiTietDanhSachKham.soThuTu).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham.soThuTu)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
             ChiTietDanhSachKham.soThuTu.is_not(None),
         ).with_for_update()
@@ -213,9 +220,10 @@ def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
 
 def _kiemTraNgayKhamChuaChot(exam_date: date) -> None:
     confirmed_registration = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maCTDSKham)
+        db.select(ChiTietDanhSachKham.maDSKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
         .where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
         )
         .limit(1)
@@ -232,22 +240,30 @@ def layDanhSachKham(
     exam_date: date,
 ) -> tuple[list[ChiTietDanhSachKham], list[ChiTietDanhSachKham]]:
     active = list(db.session.scalars(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
         ).options(joinedload(ChiTietDanhSachKham.benhNhan)).order_by(
             ChiTietDanhSachKham.soThuTu,
             ChiTietDanhSachKham.ngayDangKy,
-            ChiTietDanhSachKham.maCTDSKham,
+            ChiTietDanhSachKham.maBN,
         )
     ))
     waiting = list(db.session.scalars(
         db.select(ChiTietDanhSachKham).where(
             ChiTietDanhSachKham.trangThai == "CHO_DUYET",
-        ).options(joinedload(ChiTietDanhSachKham.benhNhan)).order_by(
-            ChiTietDanhSachKham.ngayKham,
+        ).options(
+            joinedload(ChiTietDanhSachKham.benhNhan),
+            joinedload(ChiTietDanhSachKham.danhSachKham),
+        ).join(
+            DanhSachKham,
+            DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham,
+        ).order_by(
+            DanhSachKham.ngayKham,
             ChiTietDanhSachKham.ngayDangKy,
-            ChiTietDanhSachKham.maCTDSKham,
+            ChiTietDanhSachKham.maBN,
         )
     ))
     return active, waiting
@@ -263,17 +279,19 @@ def layLichSuDanhSachDaChot() -> list[dict]:
             BenhNhan.namSinh.label("birth_year"),
         )
         .join(BenhNhan, BenhNhan.maBN == ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
         .where(ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN")
         .order_by(
-            ChiTietDanhSachKham.ngayKham.desc(),
+            DanhSachKham.ngayKham.desc(),
             ChiTietDanhSachKham.soThuTu,
-            ChiTietDanhSachKham.maCTDSKham,
+            ChiTietDanhSachKham.maBN,
         )
     )
     history: dict[date, dict] = {}
     for registration, name, phone, gender, birth_year in rows:
-        day = history.setdefault(registration.ngayKham, {
-            "date": registration.ngayKham,
+        exam_date = registration.danhSachKham.ngayKham
+        day = history.setdefault(exam_date, {
+            "date": exam_date,
             "registrations": [],
         })
         day["registrations"].append({
@@ -362,9 +380,11 @@ def dangKyKham(
     exam_date = exam_date or ngayHienTaiPhongKham()
     layGioiHanBenhNhanNgay(lock=True)
     duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maCTDSKham).where(
+        db.select(ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
             ChiTietDanhSachKham.maBN == patient.maBN,
-            ChiTietDanhSachKham.ngayKham >= exam_date,
+            DanhSachKham.ngayKham >= exam_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         ).with_for_update()
     )
@@ -372,15 +392,26 @@ def dangKyKham(
         raise ValueError("Bạn đã có lượt đăng ký khám từ hôm nay trở đi.")
 
     exam_date, slot = _timNgayKhamConChoGanNhat(exam_date)
-    registration = ChiTietDanhSachKham(
-        danhSachKham=_layHoacTaoDanhSachNgay(exam_date),
-        benhNhan=patient,
-        ngayKham=exam_date,
-        soThuTu=slot,
-        ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
-        trangThai="CHO_KHAM",
+    exam_day = _layHoacTaoDanhSachNgay(exam_date)
+    db.session.flush()
+    registration = db.session.get(
+        ChiTietDanhSachKham, (exam_day.maDSKham, patient.maBN)
     )
-    db.session.add(registration)
+    if registration is None:
+        registration = ChiTietDanhSachKham(
+            danhSachKham=exam_day,
+            benhNhan=patient,
+            soThuTu=slot,
+            ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
+            trangThai="CHO_KHAM",
+        )
+        db.session.add(registration)
+    else:
+        registration.soThuTu = slot
+        registration.ngayDangKy = datetime.now(
+            timezone(timedelta(hours=7))
+        ).replace(tzinfo=None)
+        registration.trangThai = "CHO_KHAM"
     _luuThayDoiDanhSachKham()
     return registration
 
@@ -390,7 +421,7 @@ def chuyenDangKyChoCu() -> int:
     waiting = list(db.session.scalars(
         db.select(ChiTietDanhSachKham)
         .where(ChiTietDanhSachKham.trangThai == "CHO_DUYET")
-        .order_by(ChiTietDanhSachKham.ngayDangKy, ChiTietDanhSachKham.maCTDSKham)
+        .order_by(ChiTietDanhSachKham.ngayDangKy, ChiTietDanhSachKham.maBN)
         .with_for_update()
     ))
     for registration in waiting:
@@ -398,9 +429,11 @@ def chuyenDangKyChoCu() -> int:
         while True:
             candidate, slot = _timNgayKhamConChoGanNhat(candidate)
             duplicate = db.session.scalar(
-                db.select(ChiTietDanhSachKham.maCTDSKham).where(
+                db.select(ChiTietDanhSachKham.maBN)
+                .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+                .where(
                     ChiTietDanhSachKham.maBN == registration.maBN,
-                    ChiTietDanhSachKham.ngayKham == candidate,
+                    DanhSachKham.ngayKham == candidate,
                     ChiTietDanhSachKham.trangThai.in_(ACTIVE_EXAM_STATUSES),
                 ).with_for_update()
             )
@@ -409,10 +442,20 @@ def chuyenDangKyChoCu() -> int:
             if candidate == date.max:
                 raise ValueError("Không tìm được ngày khám còn chỗ.")
             candidate += timedelta(days=1)
-        registration.danhSachKham = _layHoacTaoDanhSachNgay(candidate)
-        registration.ngayKham = candidate
-        registration.soThuTu = slot
-        registration.trangThai = "CHO_KHAM"
+        exam_day = _layHoacTaoDanhSachNgay(candidate)
+        db.session.flush()
+        existing = db.session.get(
+            ChiTietDanhSachKham, (exam_day.maDSKham, registration.maBN)
+        )
+        if existing is not None and existing is not registration:
+            existing.soThuTu = slot
+            existing.ngayDangKy = registration.ngayDangKy
+            existing.trangThai = "CHO_KHAM"
+            db.session.delete(registration)
+        else:
+            registration.danhSachKham = exam_day
+            registration.soThuTu = slot
+            registration.trangThai = "CHO_KHAM"
         db.session.flush()
     _luuThayDoiDanhSachKham()
     return len(waiting)
@@ -433,31 +476,44 @@ def themBenhNhan(
             "Vui lòng chọn ngày khác."
         )
     duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maCTDSKham)
+        db.select(ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
         .where(
             ChiTietDanhSachKham.maBN == patient.maBN,
-            ChiTietDanhSachKham.ngayKham == exam_date,
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         )
     )
     if duplicate is not None:
         raise ValueError("Bệnh nhân này đã có trong danh sách ngày đang chọn.")
 
-    registration = ChiTietDanhSachKham(
-        danhSachKham=_layHoacTaoDanhSachNgay(exam_date, nurse_id),
-        benhNhan=patient,
-        ngayKham=exam_date,
-        soThuTu=slot,
-        ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
-        trangThai="CHO_KHAM",
+    exam_day = _layHoacTaoDanhSachNgay(exam_date, nurse_id)
+    db.session.flush()
+    registration = db.session.get(
+        ChiTietDanhSachKham, (exam_day.maDSKham, patient.maBN)
     )
-    db.session.add(registration)
+    if registration is None:
+        registration = ChiTietDanhSachKham(
+            danhSachKham=exam_day,
+            benhNhan=patient,
+            soThuTu=slot,
+            ngayDangKy=datetime.now(timezone(timedelta(hours=7))).replace(tzinfo=None),
+            trangThai="CHO_KHAM",
+        )
+        db.session.add(registration)
+    else:
+        registration.soThuTu = slot
+        registration.ngayDangKy = datetime.now(
+            timezone(timedelta(hours=7))
+        ).replace(tzinfo=None)
+        registration.trangThai = "CHO_KHAM"
     _luuThayDoiDanhSachKham()
     return registration
 
 
 def capNhatLuotKham(
-    registration_id: int,
+    maDSKham: int,
+    maBN: int,
     *,
     name: str,
     gender: str,
@@ -467,7 +523,8 @@ def capNhatLuotKham(
 ) -> ChiTietDanhSachKham:
     registration = db.session.scalar(
         db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.maCTDSKham == registration_id,
+            ChiTietDanhSachKham.maDSKham == maDSKham,
+            ChiTietDanhSachKham.maBN == maBN,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         ).with_for_update()
     )
@@ -477,13 +534,16 @@ def capNhatLuotKham(
         raise ValueError("Lượt khám đã xác nhận, không thể chỉnh sửa.")
 
     duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maCTDSKham)
+        db.select(ChiTietDanhSachKham.maBN)
         .join(BenhNhan)
         .where(
-            ChiTietDanhSachKham.ngayKham == registration.ngayKham,
+            ChiTietDanhSachKham.maDSKham == registration.maDSKham,
             BenhNhan.soDienThoai == phone,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-            ChiTietDanhSachKham.maCTDSKham != registration_id,
+            or_(
+                ChiTietDanhSachKham.maDSKham != maDSKham,
+                ChiTietDanhSachKham.maBN != maBN,
+            ),
         )
     )
     if duplicate is not None:
@@ -498,11 +558,12 @@ def capNhatLuotKham(
     return registration
 
 
-def huyLuotKham(registration_id: int) -> None:
+def huyLuotKham(maDSKham: int, maBN: int) -> None:
     layGioiHanBenhNhanNgay(lock=True)
     registration = db.session.scalar(
         db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.maCTDSKham == registration_id,
+            ChiTietDanhSachKham.maDSKham == maDSKham,
+            ChiTietDanhSachKham.maBN == maBN,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
         ).with_for_update()
     )
@@ -514,7 +575,8 @@ def huyLuotKham(registration_id: int) -> None:
 
 
 def duyetLuotChoCu(
-    registration_id: int,
+    maDSKham: int,
+    maBN: int,
     target_date: date,
     nurse_id: int | None = None,
 ) -> ChiTietDanhSachKham:
@@ -524,7 +586,8 @@ def duyetLuotChoCu(
 
     registration = db.session.scalar(
         db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.maCTDSKham == registration_id,
+            ChiTietDanhSachKham.maDSKham == maDSKham,
+            ChiTietDanhSachKham.maBN == maBN,
             ChiTietDanhSachKham.trangThai == "CHO_DUYET",
         ).with_for_update()
     )
@@ -534,11 +597,16 @@ def duyetLuotChoCu(
     _kiemTraNgayKhamChuaChot(target_date)
 
     duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maCTDSKham).where(
+        db.select(ChiTietDanhSachKham.maBN)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
             ChiTietDanhSachKham.maBN == registration.maBN,
-            ChiTietDanhSachKham.ngayKham == target_date,
+            DanhSachKham.ngayKham == target_date,
             ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-            ChiTietDanhSachKham.maCTDSKham != registration_id,
+            or_(
+                ChiTietDanhSachKham.maDSKham != registration.maDSKham,
+                ChiTietDanhSachKham.maBN != registration.maBN,
+            ),
         )
     )
     if duplicate is not None:
@@ -550,10 +618,21 @@ def duyetLuotChoCu(
         raise DailyCapacityReached(
             f"Danh sách ngày {target_date.strftime('%d/%m/%Y')} đã đủ {limit} bệnh nhân."
         )
-    registration.danhSachKham = _layHoacTaoDanhSachNgay(target_date, nurse_id)
-    registration.ngayKham = target_date
-    registration.soThuTu = slot
-    registration.trangThai = "CHO_KHAM"
+    exam_day = _layHoacTaoDanhSachNgay(target_date, nurse_id)
+    db.session.flush()
+    existing = db.session.get(
+        ChiTietDanhSachKham, (exam_day.maDSKham, registration.maBN)
+    )
+    if existing is not None and existing is not registration:
+        existing.soThuTu = slot
+        existing.ngayDangKy = registration.ngayDangKy
+        existing.trangThai = "CHO_KHAM"
+        db.session.delete(registration)
+        registration = existing
+    else:
+        registration.danhSachKham = exam_day
+        registration.soThuTu = slot
+        registration.trangThai = "CHO_KHAM"
     _luuThayDoiDanhSachKham()
     return registration
 
@@ -563,15 +642,19 @@ def xacNhanDanhSach(
 ) -> list[ChiTietDanhSachKham]:
     layGioiHanBenhNhanNgay(lock=True)
     registrations = list(db.session.scalars(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai.in_(("CHO_KHAM", "DA_MO_LAI")),
         ).with_for_update()
     ))
     if not registrations:
         if db.session.scalar(
-            db.select(ChiTietDanhSachKham.maCTDSKham).where(
-                ChiTietDanhSachKham.ngayKham == exam_date,
+            db.select(ChiTietDanhSachKham.maDSKham)
+            .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+            .where(
+                DanhSachKham.ngayKham == exam_date,
                 ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
             )
         ) is not None:
@@ -591,8 +674,10 @@ def moLaiDanhSachKham(exam_date: date) -> int:
 
     layGioiHanBenhNhanNgay(lock=True)
     registrations = list(db.session.scalars(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.ngayKham == exam_date,
+        db.select(ChiTietDanhSachKham)
+        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
+        .where(
+            DanhSachKham.ngayKham == exam_date,
             ChiTietDanhSachKham.trangThai == "DA_XAC_NHAN",
         ).with_for_update()
     ))
@@ -920,6 +1005,8 @@ def _luuThuoc(actor_id: int, form, code: str | None = None) -> Thuoc:
     ).with_for_update())
     if unit is None:
         raise ValueError("Đơn vị thuốc không tồn tại. Hãy chọn lại.")
+    if unit.tenDonVi not in TEN_DON_VI_THUOC_CHUAN:
+        raise ValueError("Đơn vị thuốc không hợp lệ. Chỉ được chọn Viên, Chai hoặc Vỉ.")
     if code is None:
         medicine = Thuoc()
         medicine.maThuoc = _kiemTraMaDanhMuc(form.get("maThuoc", ""))
@@ -946,35 +1033,15 @@ def suaThuoc(actor_id: int, form, code: str) -> Thuoc:
     return _luuThuoc(actor_id, form, code)
 
 
-def luuDonViThuoc(actor_id: int, form, code: str | None = None) -> DonViThuoc:
+def _xoaMucDanhMuc(actor_id: int, code: str) -> None:
     _khoaQuanTriVien(actor_id)
-    name = form.get("tenDonVi", "").strip()
-    if not name or len(name) > 50:
-        raise ValueError("Tên đơn vị bắt buộc, tối đa 50 ký tự.")
-    if code is None:
-        unit = DonViThuoc()
-        unit.maDonVi = _kiemTraMaDanhMuc(form.get("maDonVi", ""))
-        db.session.add(unit)
-    else:
-        unit = db.session.scalar(db.select(DonViThuoc).where(
-            DonViThuoc.maDonVi == code,
-        ).with_for_update().execution_options(populate_existing=True))
-        if unit is None:
-            raise ValueError("Đơn vị không còn tồn tại.")
-    unit.tenDonVi = name
-    _luuDanhMuc()
-    return unit
-
-
-def _xoaMucDanhMuc(actor_id: int, code: str, *, unit: bool = False) -> None:
-    _khoaQuanTriVien(actor_id)
-    model = DonViThuoc if unit else Thuoc
-    key = DonViThuoc.maDonVi if unit else Thuoc.maThuoc
-    item = db.session.scalar(db.select(model).where(key == code).with_for_update())
+    item = db.session.scalar(
+        db.select(Thuoc).where(Thuoc.maThuoc == code).with_for_update()
+    )
     if item is None:
         raise ValueError("Dữ liệu không còn tồn tại.")
-    references = db.select(Thuoc.maThuoc).where(Thuoc.maDonVi == code) if unit else (
-        db.select(ChiTietDonThuoc.maThuoc).where(ChiTietDonThuoc.maThuoc == code)
+    references = db.select(ChiTietDonThuoc.maThuoc).where(
+        ChiTietDonThuoc.maThuoc == code
     )
     if db.session.scalar(references.limit(1)) is not None:
         raise ValueError("Không thể xóa: dữ liệu đang được sử dụng trong thuốc hoặc đơn thuốc.")
@@ -984,12 +1051,6 @@ def _xoaMucDanhMuc(actor_id: int, code: str, *, unit: bool = False) -> None:
 
 def xoaThuoc(actor_id: int, code: str) -> None:
     _xoaMucDanhMuc(actor_id, code)
-
-
-def xoaDonViThuoc(actor_id: int, code: str) -> None:
-    _xoaMucDanhMuc(actor_id, code, unit=True)
-
-
 def capNhatQuyDinh(actor_id: int, fee: str, maximum: str) -> None:
     _khoaQuanTriVien(actor_id)
     amount = chuyenSoTien(fee, positive=True)

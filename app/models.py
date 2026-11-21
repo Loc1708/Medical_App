@@ -11,6 +11,14 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import db
 
 
+DON_VI_THUOC_CHUAN = (
+    ("SAMPLE-VIEN", "Viên"),
+    ("SAMPLE-CHAI", "Chai"),
+    ("SAMPLE-VI", "Vỉ"),
+)
+TEN_DON_VI_THUOC_CHUAN = frozenset(ten for _, ten in DON_VI_THUOC_CHUAN)
+
+
 class Role(str, Enum):
     PATIENT = "PATIENT"
     NURSE = "NURSE"
@@ -167,23 +175,20 @@ class ChiTietDanhSachKham(db.Model):
     __tablename__ = "ChiTietDanhSachKham"
     __table_args__ = (
         ForeignKeyConstraint(
-            ["MaDSKham", "NgayKham"],
-            ["DanhSachKham.MaDSKham", "DanhSachKham.NgayKham"],
-            name="fk_ctdsk_list_date",
+            ["MaDSKham"],
+            ["DanhSachKham.MaDSKham"],
+            name="fk_ctdsk_list",
         ),
-        db.Index("uq_ctdsk_ngay_thu_tu", "NgayKham", "SoThuTu", unique=True),
-        db.Index("ix_ctdsk_ngay_trang_thai", "NgayKham", "TrangThai"),
-        {"sqlite_autoincrement": True},
+        db.Index("uq_ctdsk_list_slot", "MaDSKham", "SoThuTu", unique=True),
+        db.Index("ix_ctdsk_list_status", "MaDSKham", "TrangThai"),
     )
 
-    maCTDSKham: Mapped[int] = mapped_column(
-        "MaCTDSKham", db.Integer, primary_key=True, autoincrement=True,
+    maDSKham: Mapped[int] = mapped_column(
+        "MaDSKham", db.Integer, primary_key=True,
     )
-    maDSKham: Mapped[int] = mapped_column("MaDSKham", db.Integer, nullable=False)
     maBN: Mapped[int] = mapped_column(
-        "MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False,
+        "MaBN", db.ForeignKey("BenhNhan.MaBN"), primary_key=True,
     )
-    ngayKham: Mapped[date] = mapped_column("NgayKham", db.Date, nullable=False)
     soThuTu: Mapped[int | None] = mapped_column("SoThuTu", db.Integer, nullable=True)
     ngayDangKy: Mapped[datetime] = mapped_column("NgayDangKy", db.DateTime, nullable=False)
     trangThai: Mapped[str] = mapped_column(
@@ -193,6 +198,10 @@ class ChiTietDanhSachKham(db.Model):
         back_populates="chiTietDanhSachKhams",
     )
     benhNhan: Mapped[BenhNhan] = relationship(back_populates="dangKyKhams")
+
+    @property
+    def ngayKham(self) -> date:
+        return self.danhSachKham.ngayKham
 
 
 class DonViThuoc(db.Model):

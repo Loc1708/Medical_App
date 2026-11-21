@@ -88,7 +88,7 @@ def layHoaDonChuaThanhToan(ma_bn=None):
     res = (db.session.query(HoaDon)
            .join(PhieuKham, HoaDon.maPhieuKham == PhieuKham.maPhieuKham)
            .join(BenhNhan, PhieuKham.maBN == BenhNhan.maBN)
-           .filter(HoaDon.trangThai.contains('CHUA_THANH_TOAN')))
+           .filter(HoaDon.trangThai == 'CHUA_THANH_TOAN'))
 
     if ma_bn:
         res = res.filter(BenhNhan.maBN == ma_bn)
@@ -113,8 +113,8 @@ def thanhToan(ma_hd):
     if hd is None or hd.trangThai != 'CHUA_THANH_TOAN':
         return None
 
-    hd.trangThai = 'DA_THANH_TOAN'   # sua gia tri cot
-    db.session.commit()              # luu xuong database
+    hd.trangThai = 'DA_THANH_TOAN'   
+    db.session.commit()              
     return hd
 
 def timKiemThuoc(

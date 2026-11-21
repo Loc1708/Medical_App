@@ -22,7 +22,7 @@ if (nurseApp) {
     const reopenButton = nurseApp.querySelector("[data-reopen-list]");
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     let selectedDate = "";
-    let clinicToday = layNgayHomNay();
+    let clinicToday = todayValue();
     let currentPage = 1;
     let searchTerm = "";
     let dailyLimit = 0;
@@ -34,7 +34,7 @@ if (nurseApp) {
     let dayConfirmed = false;
     let dayLocked = false;
 
-    function layNgayHomNay() {
+    function todayValue() {
         const now = new Date();
         return [
             now.getFullYear(),
@@ -43,26 +43,26 @@ if (nurseApp) {
         ].join("-");
     }
 
-    function hienThiTrangThai(message, kind = "info") {
+    function showStatus(message, kind = "info") {
         status.textContent = message;
         status.classList.toggle("is-error", kind === "error");
         status.classList.toggle("is-success", kind === "success");
         status.hidden = !message;
     }
 
-    function chuanHoaChuoi(value) {
+    function normalize(value) {
         return value.toLocaleLowerCase("vi")
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")
             .replace(/đ/g, "d");
     }
 
-    function dinhDangNgay(value) {
+    function formatDate(value) {
         const [year, month, day] = value.split("-").map(Number);
         return new Intl.DateTimeFormat("vi-VN").format(new Date(year, month - 1, day));
     }
 
-    async function goiApi(url, options = {}) {
+    async function requestApi(url, options = {}) {
         const response = await fetch(url, {
             ...options,
             headers: {
@@ -83,8 +83,8 @@ if (nurseApp) {
         return data;
     }
 
-    async function taiLaiDanhSachNgay() {
-        const data = await goiApi(
+    async function refreshDay() {
+        const data = await requestApi(
             `/nurse/api/lists?date=${encodeURIComponent(selectedDate)}`
         );
         dailyLimit = data.limit;
@@ -98,17 +98,17 @@ if (nurseApp) {
         dayLocked = data.locked;
         nurseApp.dataset.maxPatients = String(dailyLimit);
         limitLabel.textContent = `Giới hạn: ${dailyLimit} bệnh nhân/ngày`;
-        hienThiDanhSach();
+        renderAll();
     }
 
-    function taoO(row, value) {
+    function makeCell(row, value) {
         const cell = document.createElement("td");
         cell.textContent = value;
         row.append(cell);
         return cell;
     }
 
-    function taoNut(label, className, action, id, disabled = false) {
+    function makeButton(label, className, action, id, disabled = false) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = className;
@@ -118,7 +118,7 @@ if (nurseApp) {
         return button;
     }
 
-    function taoNutBieuTuong(label, action, id) {
+    function makeIconButton(label, action, id) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "catalog-icon";
@@ -136,21 +136,21 @@ if (nurseApp) {
         return button;
     }
 
-    function xoaKetQuaTimBenhNhan() {
+    function clearPatientLookup() {
         matchedPatient = null;
         patientLookupResult.replaceChildren();
         patientLookupResult.hidden = true;
     }
 
-    function xoaGoiYBenhNhan() {
+    function clearPatientSuggestions() {
         matchedPatients = [];
         patientSuggestions.replaceChildren();
         patientSuggestions.hidden = true;
     }
 
-    function hienThiGoiYBenhNhan(patients) {
+    function renderPatientSuggestions(patients) {
         if (dayLocked) {
-            xoaGoiYBenhNhan();
+            clearPatientSuggestions();
             return;
         }
         matchedPatients = patients;
@@ -162,7 +162,7 @@ if (nurseApp) {
             patientSuggestions.append(emptyMessage);
         } else {
             patients.forEach(patient => {
-                const button = taoNut(
+                const button = makeButton(
                     patient.code, "nurse-patient-suggestion", "selectPatient",
                     patient.code
                 );
@@ -175,23 +175,23 @@ if (nurseApp) {
         patientSuggestions.hidden = false;
     }
 
-    async function timBenhNhanTheoMa(query, requestId) {
+    async function searchPatientsByCode(query, requestId) {
         if (dayLocked) return;
         try {
             const url = new URL("/nurse/api/patients", window.location.origin);
             url.searchParams.set("q", query);
-            const data = await goiApi(url);
+            const data = await requestApi(url);
             if (requestId === patientLookupRequestId) {
-                hienThiGoiYBenhNhan(data.patients);
+                renderPatientSuggestions(data.patients);
             }
         } catch (error) {
             if (requestId === patientLookupRequestId) {
-                hienThiTrangThai(error.message, "error");
+                showStatus(error.message, "error");
             }
         }
     }
 
-    function hienThiBenhNhanDaTim(patient) {
+    function showPatientLookup(patient) {
         matchedPatient = patient;
         const details = document.createElement("div");
         const name = document.createElement("strong");
@@ -204,7 +204,7 @@ if (nurseApp) {
         ].join(" · ");
         details.append(name, demographics);
 
-        const addButton = taoNut(
+        const addButton = makeButton(
             "Thêm vào danh sách", "btn btn-primary", "addFoundPatient",
             patient.code, dayLocked
         );
@@ -212,11 +212,11 @@ if (nurseApp) {
         patientLookupResult.hidden = false;
     }
 
-    function themPhanTrang(container, pageCount, page, action) {
+    function addPagination(container, pageCount, page, action) {
         container.replaceChildren();
         if (pageCount <= 1) return;
 
-        function themNutTrang(label, target, disabled = false, current = false) {
+        function addPageButton(label, target, disabled = false, current = false) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = current
@@ -229,22 +229,22 @@ if (nurseApp) {
             container.append(button);
         }
 
-        themNutTrang("< Trước", page - 1, page === 1);
+        addPageButton("< Trước", page - 1, page === 1);
         for (let target = 1; target <= pageCount; target += 1) {
-            themNutTrang(String(target), target, false, target === page);
+            addPageButton(String(target), target, false, target === page);
         }
-        themNutTrang("Sau >", page + 1, page === pageCount);
+        addPageButton("Sau >", page + 1, page === pageCount);
     }
 
-    function locBenhNhan(items) {
-        const query = chuanHoaChuoi(searchTerm.trim());
+    function filtered(items) {
+        const query = normalize(searchTerm.trim());
         return items.filter(patient => (
-            !query || chuanHoaChuoi(patient.name).includes(query)
+            !query || normalize(patient.name).includes(query)
         ));
     }
 
-    function hienThiBenhNhan() {
-        const patients = locBenhNhan(activePatients);
+    function renderPatients() {
+        const patients = filtered(activePatients);
         const pageCount = Math.ceil(patients.length / pageSize);
         currentPage = Math.min(currentPage, Math.max(pageCount, 1));
         const start = (currentPage - 1) * pageSize;
@@ -253,16 +253,16 @@ if (nurseApp) {
         patientRows.replaceChildren();
         patientCount.textContent = `${activePatients.length}/${dailyLimit}`;
         confirmedStatus.textContent = dayConfirmed
-            ? `Danh sách khám ngày ${dinhDangNgay(selectedDate)} đã được xác nhận và chốt. Không thể thêm bệnh nhân mới vào ngày này.`
+            ? `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt. Không thể thêm bệnh nhân mới vào ngày này.`
             : dayLocked
-                ? `Ngày ${dinhDangNgay(selectedDate)} đã có lượt được xác nhận; không thể thêm bệnh nhân. Hãy xác nhận các lượt còn lại để chốt danh sách.`
+                ? `Ngày ${formatDate(selectedDate)} đã có lượt được xác nhận; không thể thêm bệnh nhân. Hãy xác nhận các lượt còn lại để chốt danh sách.`
                 : "";
         dayLockedWarning.hidden = !dayLocked;
         if (dayLocked) {
             dayLockedWarning.textContent = dayConfirmed
-                ? `Danh sách khám ngày ${dinhDangNgay(selectedDate)} đã được xác nhận và chốt. Không thể thêm bệnh nhân vào ngày này.`
-                : `Ngày ${dinhDangNgay(selectedDate)} đã có lượt được xác nhận; không thể thêm bệnh nhân vào ngày này. Hãy xác nhận các lượt còn lại để hoàn tất.`;
-            xoaGoiYBenhNhan();
+                ? `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt. Không thể thêm bệnh nhân vào ngày này.`
+                : `Ngày ${formatDate(selectedDate)} đã có lượt được xác nhận; không thể thêm bệnh nhân vào ngày này. Hãy xác nhận các lượt còn lại để hoàn tất.`;
+            clearPatientSuggestions();
         }
         patientCodeInput.disabled = dayLocked;
         const addButton = patientLookupResult.querySelector("[data-add-found-patient]");
@@ -274,7 +274,7 @@ if (nurseApp) {
 
         if (!visible.length) {
             const row = document.createElement("tr");
-            const cell = taoO(
+            const cell = makeCell(
                 row,
                 searchTerm ? "Không tìm thấy bệnh nhân phù hợp." : "Chưa có bệnh nhân trong ngày này."
             );
@@ -284,15 +284,15 @@ if (nurseApp) {
         } else {
             visible.forEach((patient, index) => {
                 const row = document.createElement("tr");
-                taoO(row, String(start + index + 1));
-                taoO(row, patient.name);
-                taoO(row, patient.gender);
-                taoO(row, patient.phone);
-                taoO(row, String(patient.birthYear));
+                makeCell(row, String(start + index + 1));
+                makeCell(row, patient.name);
+                makeCell(row, patient.gender);
+                makeCell(row, patient.phone);
+                makeCell(row, String(patient.birthYear));
                 const actionsCell = document.createElement("td");
                 const actions = document.createElement("div");
                 actions.className = "nurse-row-actions";
-                actions.append(taoNutBieuTuong("Hủy lượt khám", "cancelPatient", patient.id));
+                actions.append(makeIconButton("Hủy lượt khám", "cancelPatient", patient.id));
                 actionsCell.append(actions);
                 row.append(actionsCell);
                 patientRows.append(row);
@@ -303,25 +303,25 @@ if (nurseApp) {
         listSummary.textContent = patients.length
             ? `Hiển thị ${start + 1}–${end} trên ${patients.length} kết quả · ${activePatients.length}/${dailyLimit} bệnh nhân trong danh sách`
             : `0 kết quả · ${activePatients.length}/${dailyLimit} bệnh nhân trong danh sách`;
-        themPhanTrang(pagination, pageCount, currentPage, "page");
+        addPagination(pagination, pageCount, currentPage, "page");
     }
 
-    function hienThiDanhSach() {
-        hienThiBenhNhan();
+    function renderAll() {
+        renderPatients();
     }
 
-    async function huyLuotKham(patientId) {
+    async function cancelPatient(patientId) {
         const patient = activePatients
             .find(item => String(item.id) === String(patientId));
         if (!patient || !window.confirm(`Hủy lượt khám của ${patient.name}?`)) return;
         try {
-            const result = await goiApi(`/nurse/api/lists/${patient.id}`, {
+            const result = await requestApi(`/nurse/api/lists/${patient.id}`, {
                 method: "DELETE",
             });
-            await taiLaiDanhSachNgay();
-            hienThiTrangThai(result.message, "success");
+            await refreshDay();
+            showStatus(result.message, "success");
         } catch (error) {
-            hienThiTrangThai(error.message, "error");
+            showStatus(error.message, "error");
         }
     }
 
@@ -329,11 +329,11 @@ if (nurseApp) {
         window.clearTimeout(patientSearchTimer);
         const requestId = ++patientLookupRequestId;
         const query = patientCodeInput.value.trim();
-        xoaKetQuaTimBenhNhan();
-        xoaGoiYBenhNhan();
+        clearPatientLookup();
+        clearPatientSuggestions();
         if (query) {
             patientSearchTimer = window.setTimeout(
-                () => timBenhNhanTheoMa(query, requestId), 250
+                () => searchPatientsByCode(query, requestId), 250
             );
         }
     });
@@ -343,9 +343,9 @@ if (nurseApp) {
         patientSearchTimer = null;
         const query = patientCodeInput.value.trim();
         const requestId = ++patientLookupRequestId;
-        xoaKetQuaTimBenhNhan();
-        xoaGoiYBenhNhan();
-        if (query) await timBenhNhanTheoMa(query, requestId);
+        clearPatientLookup();
+        clearPatientSuggestions();
+        if (query) await searchPatientsByCode(query, requestId);
     });
     patientSuggestions.addEventListener("click", event => {
         const button = event.target.closest("[data-select-patient]");
@@ -356,22 +356,22 @@ if (nurseApp) {
         patientSearchTimer = null;
         patientLookupRequestId += 1;
         patientCodeInput.value = patient.code;
-        xoaGoiYBenhNhan();
-        hienThiBenhNhanDaTim(patient);
+        clearPatientSuggestions();
+        showPatientLookup(patient);
     });
     patientLookupResult.addEventListener("click", async event => {
         const button = event.target.closest("[data-add-found-patient]");
         if (!button || button.disabled || !matchedPatient) return;
         if (dayLocked) {
-            hienThiTrangThai(
-                `Danh sách khám ngày ${dinhDangNgay(selectedDate)} đã được xác nhận và chốt; không thể thêm bệnh nhân mới.`,
+            showStatus(
+                `Danh sách khám ngày ${formatDate(selectedDate)} đã được xác nhận và chốt; không thể thêm bệnh nhân mới.`,
                 "error"
             );
             return;
         }
         button.disabled = true;
         try {
-            const result = await goiApi("/nurse/api/lists", {
+            const result = await requestApi("/nurse/api/lists", {
                 method: "POST",
                 body: JSON.stringify({
                     patient_code: matchedPatient.code,
@@ -382,21 +382,21 @@ if (nurseApp) {
             patientLookupRequestId += 1;
             window.clearTimeout(patientSearchTimer);
             patientSearchTimer = null;
-            xoaGoiYBenhNhan();
-            xoaKetQuaTimBenhNhan();
+            clearPatientSuggestions();
+            clearPatientLookup();
             currentPage = 1;
             searchTerm = "";
             searchInput.value = "";
-            await taiLaiDanhSachNgay();
-            hienThiTrangThai(result.message, "success");
+            await refreshDay();
+            showStatus(result.message, "success");
         } catch (error) {
-            hienThiTrangThai(error.message, "error");
+            showStatus(error.message, "error");
         } finally {
             button.disabled = false;
         }
     });
 
-    dateInput.value = dateInput.value || layNgayHomNay();
+    dateInput.value = dateInput.value || todayValue();
     selectedDate = dateInput.value;
     dateInput.addEventListener("change", async () => {
         selectedDate = dateInput.value;
@@ -406,12 +406,12 @@ if (nurseApp) {
         activePatients = [];
         dayConfirmed = false;
         dayLocked = false;
-        hienThiDanhSach();
-        hienThiTrangThai("");
+        renderAll();
+        showStatus("");
         try {
-            await taiLaiDanhSachNgay();
+            await refreshDay();
         } catch (error) {
-            hienThiTrangThai(error.message, "error");
+            showStatus(error.message, "error");
         }
     });
 
@@ -419,72 +419,72 @@ if (nurseApp) {
         event.preventDefault();
         searchTerm = searchInput.value.trim();
         currentPage = 1;
-        hienThiDanhSach();
-        hienThiTrangThai("");
+        renderAll();
+        showStatus("");
     });
     nurseApp.querySelector("[data-clear-search]").addEventListener("click", () => {
         searchInput.value = "";
         searchTerm = "";
         currentPage = 1;
-        hienThiDanhSach();
-        hienThiTrangThai("");
+        renderAll();
+        showStatus("");
         searchInput.focus();
     });
 
     patientRows.addEventListener("click", async event => {
         const cancelButton = event.target.closest("[data-cancel-patient]");
-        if (cancelButton) await huyLuotKham(cancelButton.dataset.cancelPatient);
+        if (cancelButton) await cancelPatient(cancelButton.dataset.cancelPatient);
     });
     pagination.addEventListener("click", event => {
         const button = event.target.closest("[data-page]");
         if (!button || button.disabled) return;
         currentPage = Number(button.dataset.page);
-        hienThiBenhNhan();
+        renderPatients();
     });
     confirmButton.addEventListener("click", async () => {
         if (!activePatients.length) {
-            hienThiTrangThai("Danh sách đang trống; hãy thêm ít nhất một bệnh nhân trước khi xác nhận.", "error");
+            showStatus("Danh sách đang trống; hãy thêm ít nhất một bệnh nhân trước khi xác nhận.", "error");
             return;
         }
         if (dayConfirmed) {
-            hienThiTrangThai("Danh sách ngày này đã được xác nhận.");
+            showStatus("Danh sách ngày này đã được xác nhận.");
             return;
         }
         if (!window.confirm(
-            `Xác nhận danh sách ngày ${dinhDangNgay(selectedDate)} gồm ${activePatients.length} bệnh nhân?`
+            `Xác nhận danh sách ngày ${formatDate(selectedDate)} gồm ${activePatients.length} bệnh nhân?`
         )) return;
         try {
-            const result = await goiApi("/nurse/api/lists/confirm", {
+            const result = await requestApi("/nurse/api/lists/confirm", {
                 method: "POST",
                 body: JSON.stringify({ date: selectedDate }),
             });
-            await taiLaiDanhSachNgay();
-            hienThiTrangThai(result.message, "success");
+            await refreshDay();
+            showStatus(result.message, "success");
         } catch (error) {
-            hienThiTrangThai(error.message, "error");
+            showStatus(error.message, "error");
         }
     });
 
     reopenButton.addEventListener("click", async () => {
         if (!dayConfirmed) return;
         if (selectedDate < clinicToday) {
-            hienThiTrangThai("Không thể mở lại danh sách của ngày đã qua.", "error");
+            showStatus("Không thể mở lại danh sách của ngày đã qua.", "error");
             return;
         }
         if (!window.confirm(
-            `Mở lại danh sách ngày ${dinhDangNgay(selectedDate)} để bổ sung bệnh nhân?`
+            `Mở lại danh sách ngày ${formatDate(selectedDate)} để bổ sung bệnh nhân?`
         )) return;
         try {
-            const result = await goiApi("/nurse/api/lists/reopen", {
+            const result = await requestApi("/nurse/api/lists/reopen", {
                 method: "POST",
                 body: JSON.stringify({ date: selectedDate }),
             });
-            await taiLaiDanhSachNgay();
-            hienThiTrangThai(result.message, "success");
+            await refreshDay();
+            showStatus(result.message, "success");
         } catch (error) {
-            hienThiTrangThai(error.message, "error");
+            showStatus(error.message, "error");
         }
     });
 
-    taiLaiDanhSachNgay().catch(error => hienThiTrangThai(error.message, "error"));
+    refreshDay().catch(error => showStatus(error.message, "error"));
 }

@@ -145,7 +145,7 @@ def timKiemThuoc(
     )), total
 
 
-def layDanhSachLichSuKham(
+def layLichSuKham(
     patient_id: int,
     *,
     page: int = 1,

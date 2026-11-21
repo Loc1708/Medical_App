@@ -40,7 +40,7 @@ def bacSiXemLichSuKham(code: str):
         return jsonify(error="Số trang không hợp lệ."), 400
     page = int(raw_page)
     page_size = 5
-    history, total = dao.layDanhSachLichSuKham(
+    history, total = dao.layLichSuKham(
         patient.maBN,
         page=page,
         page_size=page_size,

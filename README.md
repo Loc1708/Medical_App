@@ -77,8 +77,11 @@ theo Flask-Login, tên endpoint, lệnh CLI và tên kiểm thử được giữ
 Frontend dùng HTML/Jinja2, Bootstrap 5.0.2 và JavaScript thuần; không có npm build.
 Logo trên header và favicon của các trang dùng chung biểu tượng
 `static\images\2.png`.
-Chart.js 4.4.1 qua CDN được dùng cho báo cáo, Flask-Admin đã có trong dependencies;
-màn hình tài khoản hiện là các view Jinja2 tùy chỉnh để quản lý đồng bộ hồ sơ.
+Chart.js 4.4.1 qua CDN được dùng cho báo cáo. Flask-Admin cung cấp trang
+`/admin-console` chỉ dành cho ADMIN để xem tài khoản, bệnh nhân, nhân viên,
+thuốc, hóa đơn và quy định; mật khẩu không được hiển thị. Trang này chỉ cho xem,
+không hỗ trợ thêm, sửa, xóa hoặc xuất dữ liệu. Các màn hình quản trị hiện tại
+vẫn được dùng để thao tác dữ liệu và kiểm tra quy tắc nghiệp vụ.
 
 ## Cài đặt và chạy local
 
@@ -141,11 +144,9 @@ nhận giá trị mới; `laySoBenhNhanToiDa()` trả int. DAO kiểm tra quyề
 Tiền khám mới không sửa hóa đơn cũ. Giới hạn tiếp nhận được lưu để luồng danh sách khám
 sử dụng khi triển khai; đợt này chưa tự áp giới hạn vào chức năng bác sĩ hoặc đặt lịch.
 
-`requirements.txt` bao gồm các thư viện trong mẫu lớp: Flask, Flask-Admin,
-Flask-Login, Flask-SQLAlchemy, PyMySQL, Cloudinary, WTForms và các phụ thuộc.
-Giữ Flask-Migrate của dự án cùng SQLAlchemy 2.0.57.
+`requirements.txt` bao gồm Flask, Flask-Admin, Flask-Login, Flask-SQLAlchemy,
+PyMySQL và các phụ thuộc. Cloudinary chưa được cấu hình hoặc sử dụng.
 Tệp được lưu UTF-8 để dễ đọc và cập nhật.
-Cloudinary chưa được cấu hình hoặc sử dụng trong đợt tài khoản.
 
 Máy cần có Python. Mở terminal tại gốc repository:
 

@@ -10,6 +10,7 @@
         <a class="nav-item {{ 'active' if endpoint.startswith('admin_medicine') else '' }}" href="{{ url_for('admin_medicines') }}">Quản lý thuốc</a>
         <a class="nav-item {{ 'active' if endpoint.startswith('admin_unit') else '' }}" href="{{ url_for('admin_units') }}">Đơn vị thuốc</a>
         <a class="nav-item {{ 'active' if endpoint == 'admin_regulations' else '' }}" href="{{ url_for('admin_regulations') }}">Quản lý quy định</a>
+        <a class="nav-item" href="{{ url_for('flask_admin.index') }}">Flask-Admin (chỉ xem)</a>
         {% elif current_user.role == Role.PATIENT %}
         <a class="nav-item {{ 'active' if endpoint == 'dashboard' else '' }}" href="{{ url_for('dashboard') }}">Tổng quan</a>
         <a class="nav-item {{ 'active' if endpoint == 'patient_profile' else '' }}" href="{{ url_for('patient_profile') }}">Thông tin bệnh nhân</a>

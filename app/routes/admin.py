@@ -5,7 +5,10 @@ from flask import abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user
 
 from app import app, dao, db
-from app.models import BenhNhan, DonViThuoc, NhanVien, QuyDinh, Role, TaiKhoan, Thuoc
+from app.models import (
+    BenhNhan, DonViThuoc, NhanVien, QuyDinh, Role, TaiKhoan,
+    TEN_DON_VI_THUOC_CHUAN, Thuoc,
+)
 from app.utils import layDuLieuTaiKhoan, yeuCauVaiTro
 
 
@@ -134,22 +137,21 @@ def quanLyThuoc():
 @yeuCauVaiTro(Role.ADMIN)
 def quanLyDonViThuoc():
     keyword = request.args.get("q", "").strip()[:50]
-    statement = db.select(DonViThuoc)
+    statement = db.select(DonViThuoc).where(
+        DonViThuoc.tenDonVi.in_(TEN_DON_VI_THUOC_CHUAN)
+    )
     if keyword:
         statement = statement.where(DonViThuoc.tenDonVi.contains(keyword, autoescape=True))
     page = db.paginate(statement.order_by(DonViThuoc.maDonVi), per_page=10, max_per_page=10)
     return render_template("admin/catalog.html", page=page, keyword=keyword, unit_mode=True)
 
 
-def _chinhSuaDanhMuc(unit_mode: bool, code: str | None):
-    model = DonViThuoc if unit_mode else Thuoc
-    item = db.get_or_404(model, code) if code else None
+def _chinhSuaThuoc(code: str | None):
+    item = db.get_or_404(Thuoc, code) if code else None
     error_message = None
     if request.method == "POST":
         try:
-            if unit_mode:
-                dao.luuDonViThuoc(current_user.maTK, request.form, code)
-            elif code is None:
+            if code is None:
                 dao.themThuoc(current_user.maTK, request.form)
             else:
                 dao.suaThuoc(current_user.maTK, request.form, code)
@@ -157,14 +159,12 @@ def _chinhSuaDanhMuc(unit_mode: bool, code: str | None):
             db.session.rollback()
             error_message = str(error)
         else:
-            flash("Đã lưu đơn vị thuốc." if unit_mode else "Đã lưu thuốc.", "success")
+            flash("Đã lưu thuốc.", "success")
             if request.args.get("modal") == "1":
                 return "", 204
-            return redirect(url_for("admin_units" if unit_mode else "admin_medicines"))
+            return redirect(url_for("admin_medicines"))
     if request.method == "POST":
         values = request.form
-    elif isinstance(item, DonViThuoc):
-        values = {"maDonVi": item.maDonVi, "tenDonVi": item.tenDonVi}
     elif isinstance(item, Thuoc):
         values = {
             "maThuoc": item.maThuoc, "tenThuoc": item.tenThuoc, "maDonVi": item.maDonVi,
@@ -172,11 +172,15 @@ def _chinhSuaDanhMuc(unit_mode: bool, code: str | None):
         }
     else:
         values = {}
-    units = list(db.session.scalars(db.select(DonViThuoc).order_by(DonViThuoc.tenDonVi)))
+    units = list(db.session.scalars(
+        db.select(DonViThuoc)
+        .where(DonViThuoc.tenDonVi.in_(TEN_DON_VI_THUOC_CHUAN))
+        .order_by(DonViThuoc.tenDonVi)
+    ))
     modal = request.args.get("modal") == "1"
     return render_template(
         "components/catalog_dialog.html" if modal else "admin/catalog_form.html",
-        values=values, item=item, unit_mode=unit_mode, units=units,
+        values=values, item=item, unit_mode=False, units=units,
         error_message=error_message, modal=modal,
     ), 422 if modal and error_message else 200
 
@@ -185,39 +189,33 @@ def _chinhSuaDanhMuc(unit_mode: bool, code: str | None):
 @app.route("/admin/medicines/<code>/edit", methods=["GET", "POST"], endpoint="admin_medicine_edit")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriChinhSuaThuoc(code: str | None = None):
-    return _chinhSuaDanhMuc(False, code)
+    return _chinhSuaThuoc(code)
 
 
 @app.route("/admin/units/new", methods=["GET", "POST"], endpoint="admin_unit_edit")
 @app.route("/admin/units/<code>/edit", methods=["GET", "POST"], endpoint="admin_unit_edit")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriChinhSuaDonVi(code: str | None = None):
-    return _chinhSuaDanhMuc(True, code)
+    abort(405, description="Đơn vị thuốc được cố định theo quy định.")
 
 
 @app.post("/admin/medicines/<code>/delete", endpoint="admin_medicine_delete")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriXoaThuoc(code: str):
-    return _xoaDanhMuc(code, False)
+    try:
+        dao.xoaThuoc(current_user.maTK, code)
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+    else:
+        flash("Đã xóa thuốc.", "success")
+    return redirect(url_for("admin_medicines", q=request.form.get("q", "")))
 
 
 @app.post("/admin/units/<code>/delete", endpoint="admin_unit_delete")
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriXoaDonVi(code: str):
-    return _xoaDanhMuc(code, True)
-
-
-def _xoaDanhMuc(code: str, unit_mode: bool):
-    try:
-        deleter = dao.xoaDonViThuoc if unit_mode else dao.xoaThuoc
-        deleter(current_user.maTK, code)
-    except ValueError as error:
-        db.session.rollback()
-        flash(str(error), "danger")
-    else:
-        flash("Đã xóa đơn vị thuốc." if unit_mode else "Đã xóa thuốc.", "success")
-    return redirect(url_for("admin_units" if unit_mode else "admin_medicines",
-                            q=request.form.get("q", "")))
+    abort(405, description="Đơn vị thuốc được cố định theo quy định.")
 
 
 @app.route("/admin/regulations", methods=["GET", "POST"], endpoint="admin_regulations")

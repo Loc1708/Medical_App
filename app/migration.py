@@ -17,9 +17,94 @@ NURSE_SLOT_INDEX = "uq_dskham_ngay_thu_tu"
 NURSE_DAY_INDEX = "ix_dskham_ngay_trang_thai"
 NURSE_DETAIL_PROFILE_COLUMNS = ("HoTen", "GioiTinh", "NamSinh", "DiaChi")
 NURSE_DETAIL_REQUIRED_COLUMNS = {
-    "MaCTDSKham", "MaDSKham", "MaBN", "NgayKham",
+    "MaDSKham", "MaBN", "NgayKham",
     "SoThuTu", "NgayDangKy", "TrangThai",
 }
+DON_VI_THUOC_CU = {"gói", "đơn vị kiểm thử"}
+
+
+def chuyenDonViThuocVeBaLoai(engine: Engine) -> bool:
+    if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
+        raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
+    if not {"DonViThuoc", "Thuoc"}.issubset(inspect(engine).get_table_names()):
+        raise ValueError("DonViThuoc and Thuoc are required; run init-db first.")
+
+    don_vi_chuan = (
+        ("SAMPLE-VIEN", "Viên"),
+        ("SAMPLE-CHAI", "Chai"),
+        ("SAMPLE-VI", "Vỉ"),
+    )
+    with engine.begin() as connection:
+        don_vis = connection.execute(
+            text("SELECT MaDonVi, tenDonVi FROM DonViThuoc ORDER BY MaDonVi")
+        ).mappings().all()
+        ten_hop_le = {ten.casefold() for _, ten in don_vi_chuan}
+        ten_cu = {row["tenDonVi"].strip().casefold() for row in don_vis}
+        ten_khong_ro = ten_cu - ten_hop_le - DON_VI_THUOC_CU
+        if ten_khong_ro:
+            raise ValueError(
+                "Unmapped existing medicine unit(s): "
+                + ", ".join(sorted(ten_khong_ro))
+                + ". Add an explicit mapping before retrying."
+            )
+
+        don_vis_theo_ten = {}
+        for don_vi in don_vis:
+            don_vis_theo_ten.setdefault(don_vi["tenDonVi"].strip().casefold(), []).append(
+                don_vi["MaDonVi"]
+            )
+
+        ma_dich = {}
+        ma_dang_dung = {row["MaDonVi"] for row in don_vis}
+        da_thay_doi = False
+        for ma_mac_dinh, ten_chuan in don_vi_chuan:
+            ten_khoa = ten_chuan.casefold()
+            ma_cac_dong = don_vis_theo_ten.get(ten_khoa, [])
+            if ma_cac_dong:
+                ma_dich[ten_khoa] = ma_cac_dong[0]
+            else:
+                ma_moi = ma_mac_dinh
+                hau_to = 1
+                while ma_moi in ma_dang_dung:
+                    ma_moi = f"{ma_mac_dinh}-{hau_to}"
+                    hau_to += 1
+                connection.execute(
+                    text(
+                        "INSERT INTO DonViThuoc (MaDonVi, tenDonVi) "
+                        "VALUES (:ma, :ten)"
+                    ),
+                    {"ma": ma_moi, "ten": ten_chuan},
+                )
+                ma_dang_dung.add(ma_moi)
+                ma_dich[ten_khoa] = ma_moi
+                da_thay_doi = True
+
+        ma_vien = ma_dich["viên"]
+        for don_vi in don_vis:
+            ma_cu = don_vi["MaDonVi"]
+            ten_cu = don_vi["tenDonVi"].strip().casefold()
+            ma_moi = ma_dich.get(ten_cu, ma_vien)
+            ten_chuan = next(
+                (ten for _, ten in don_vi_chuan if ten.casefold() == ten_cu), None
+            )
+            if ma_cu != ma_moi:
+                connection.execute(
+                    text("UPDATE Thuoc SET MaDonVi = :ma_moi WHERE MaDonVi = :ma_cu"),
+                    {"ma_moi": ma_moi, "ma_cu": ma_cu},
+                )
+                connection.execute(
+                    text("DELETE FROM DonViThuoc WHERE MaDonVi = :ma_cu"),
+                    {"ma_cu": ma_cu},
+                )
+                da_thay_doi = True
+            elif ten_chuan is not None and don_vi["tenDonVi"] != ten_chuan:
+                connection.execute(
+                    text("UPDATE DonViThuoc SET tenDonVi = :ten WHERE MaDonVi = :ma"),
+                    {"ten": ten_chuan, "ma": ma_cu},
+                )
+                da_thay_doi = True
+
+        return da_thay_doi
 
 
 def xoaCotHoSoTrung(engine: Engine) -> bool:
@@ -237,9 +322,20 @@ def _nangCapCauTrucYTa(connection, engine: Engine) -> bool:
         day_columns = {
             column["name"] for column in inspector.get_columns("DanhSachKham")
         }
+        detail_primary_key = inspector.get_pk_constraint(
+            "ChiTietDanhSachKham"
+        ).get("constrained_columns")
+        has_registration_identity = (
+            detail_primary_key == ["MaDSKham", "MaBN"]
+            or (
+                detail_primary_key == ["MaCTDSKham"]
+                and "MaCTDSKham" in detail_columns
+            )
+        )
         if (
-            {"MaCTDSKham", "MaDSKham", "MaBN", "NgayKham", "SoThuTu", "TrangThai"}
+            {"MaDSKham", "MaBN", "NgayKham", "SoThuTu", "TrangThai"}
             <= detail_columns
+            and has_registration_identity
             and {"MaDSKham", "NgayKham", "MaNV"} <= day_columns
         ):
             return False
@@ -417,12 +513,23 @@ def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
             column["name"]
             for column in inspect(engine).get_columns("ChiTietDanhSachKham")
         }
+        detail_primary_key = inspect(engine).get_pk_constraint(
+            "ChiTietDanhSachKham"
+        ).get("constrained_columns")
+        has_registration_identity = (
+            detail_primary_key == ["MaDSKham", "MaBN"]
+            or (
+                detail_primary_key == ["MaCTDSKham"]
+                and "MaCTDSKham" in detail_columns
+            )
+        )
         if (
             {"MaDSKham", "NgayKham", "MaNV"} <= day_columns
             and {
-                "MaCTDSKham", "MaDSKham", "MaBN", "NgayKham",
+                "MaDSKham", "MaBN", "NgayKham",
                 "SoThuTu", "NgayDangKy", "TrangThai",
             } <= detail_columns
+            and has_registration_identity
         ):
             return False
         raise ValueError(
@@ -473,9 +580,8 @@ def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
     staged_detail = Table(
         stage_detail_name,
         staging_metadata,
-        Column("MaCTDSKham", Integer, primary_key=True, autoincrement=True),
-        Column("MaDSKham", Integer, nullable=False),
-        Column("MaBN", Integer, ForeignKey("BenhNhan.MaBN"), nullable=False),
+        Column("MaDSKham", Integer, primary_key=True),
+        Column("MaBN", Integer, ForeignKey("BenhNhan.MaBN"), primary_key=True),
         Column("NgayKham", Date, nullable=False),
         Column("SoThuTu", Integer, nullable=True),
         Column("NgayDangKy", DateTime, nullable=False),
@@ -500,18 +606,18 @@ def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
             {"MaDSKham": day_ids[exam_date], "NgayKham": exam_date, "MaNV": None}
             for exam_date in dates
         ]
-        detail_rows = [
-            {
-                "MaCTDSKham": row["MaDSKham"],
-                "MaDSKham": day_ids[row["NgayKham"]],
-                "MaBN": row["MaBN"],
+        detail_rows_by_pair = {}
+        for row in source_rows:
+            pair = (day_ids[row["NgayKham"]], row["MaBN"])
+            detail_rows_by_pair[pair] = {
+                "MaDSKham": pair[0],
+                "MaBN": pair[1],
                 "NgayKham": row["NgayKham"],
                 "SoThuTu": row["SoThuTu"],
                 "NgayDangKy": row["NgayDangKy"],
                 "TrangThai": row["TrangThai"],
             }
-            for row in source_rows
-        ]
+        detail_rows = list(detail_rows_by_pair.values())
 
         staging_metadata.create_all(connection)
         if day_rows:
@@ -521,21 +627,23 @@ def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
 
         copied_rows = connection.execute(
             select(
-                staged_detail.c.MaCTDSKham,
                 staged_detail.c.MaDSKham,
                 staged_detail.c.MaBN,
                 staged_detail.c.NgayKham,
                 staged_detail.c.SoThuTu,
                 staged_detail.c.NgayDangKy,
                 staged_detail.c.TrangThai,
-            ).order_by(staged_detail.c.MaCTDSKham)
+            ).order_by(staged_detail.c.MaDSKham, staged_detail.c.MaBN)
         ).all()
         expected_rows = [
             (
-                row["MaCTDSKham"], row["MaDSKham"], row["MaBN"], row["NgayKham"],
+                row["MaDSKham"], row["MaBN"], row["NgayKham"],
                 row["SoThuTu"], row["NgayDangKy"], row["TrangThai"],
             )
-            for row in sorted(detail_rows, key=lambda item: item["MaCTDSKham"])
+            for row in sorted(
+                detail_rows,
+                key=lambda item: (item["MaDSKham"], item["MaBN"]),
+            )
         ]
         if copied_rows != expected_rows:
             raise ValueError(
@@ -561,6 +669,153 @@ def nangCapCauTrucDanhSachKham(engine: Engine) -> bool:
                 f"ALTER TABLE {quote(stage_detail_name)} "
                 f"RENAME TO {quote('ChiTietDanhSachKham')}"
             )
+
+    if engine.dialect.name == "sqlite":
+        with engine.connect() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+            connection.commit()
+            try:
+                with connection.begin():
+                    saoChepVaThayBang(connection)
+            finally:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                connection.commit()
+            violations = connection.exec_driver_sql("PRAGMA foreign_key_check").all()
+            if violations:
+                raise ValueError(
+                    "Foreign-key violations found after migration; inspect the database."
+                )
+    else:
+        with engine.begin() as connection:
+            saoChepVaThayBang(connection)
+    return True
+
+
+def chuyenChiTietDanhSachKhamSangKhoaGhep(engine: Engine) -> bool:
+    if engine.dialect.name not in {"mysql", "mariadb", "sqlite"}:
+        raise ValueError("This migration supports MySQL/TiDB and SQLite only.")
+
+    table_name = "ChiTietDanhSachKham"
+    stage_name = "_ChiTietDanhSachKham_composite"
+    backup_name = "ChiTietDanhSachKham_legacy"
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        raise ValueError("ChiTietDanhSachKham is missing; run init-db first.")
+
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
+    primary_key = inspector.get_pk_constraint(table_name).get("constrained_columns")
+    if primary_key == ["MaDSKham", "MaBN"] and "MaCTDSKham" not in columns:
+        return False
+    required = {
+        "MaCTDSKham", "MaDSKham", "MaBN", "NgayKham",
+        "SoThuTu", "NgayDangKy", "TrangThai",
+    }
+    if primary_key != ["MaCTDSKham"] or not required <= columns:
+        raise ValueError(
+            "ChiTietDanhSachKham has an unexpected schema; inspect it before migration."
+        )
+    existing_tables = set(inspector.get_table_names())
+    if {stage_name, backup_name} & existing_tables:
+        raise ValueError(
+            "Migration staging or backup table already exists; inspect before retrying."
+        )
+
+    source_metadata = MetaData()
+    source = Table(table_name, source_metadata, autoload_with=engine)
+    staging_metadata = MetaData()
+    Table("DanhSachKham", staging_metadata, autoload_with=engine)
+    Table("BenhNhan", staging_metadata, autoload_with=engine)
+    staged = Table(
+        stage_name,
+        staging_metadata,
+        Column("MaDSKham", Integer, primary_key=True),
+        Column("MaBN", Integer, ForeignKey("BenhNhan.MaBN"), primary_key=True),
+        Column("NgayKham", Date, nullable=False),
+        Column("SoThuTu", Integer, nullable=True),
+        Column("NgayDangKy", DateTime, nullable=False),
+        Column("TrangThai", String(20), nullable=False),
+        ForeignKeyConstraint(
+            ["MaDSKham", "NgayKham"],
+            ["DanhSachKham.MaDSKham", "DanhSachKham.NgayKham"],
+            name="fk_ctdsk_list_date",
+        ),
+    )
+
+    def saoChepVaThayBang(connection) -> None:
+        source_rows = connection.execute(
+            select(source).order_by(source.c.MaCTDSKham)
+        ).mappings().all()
+        latest_by_pair = {}
+        for row in source_rows:
+            pair = (row["MaDSKham"], row["MaBN"])
+            latest_by_pair[pair] = {
+                "MaDSKham": row["MaDSKham"],
+                "MaBN": row["MaBN"],
+                "NgayKham": row["NgayKham"],
+                "SoThuTu": row["SoThuTu"],
+                "NgayDangKy": row["NgayDangKy"],
+                "TrangThai": row["TrangThai"],
+            }
+        copied = sorted(
+            latest_by_pair.values(),
+            key=lambda row: (row["MaDSKham"], row["MaBN"]),
+        )
+
+        staged.create(connection)
+        if copied:
+            connection.execute(staged.insert(), copied)
+        staged_rows = connection.execute(
+            select(staged).order_by(staged.c.MaDSKham, staged.c.MaBN)
+        ).all()
+        expected_rows = [
+            (
+                row["MaDSKham"], row["MaBN"], row["NgayKham"],
+                row["SoThuTu"], row["NgayDangKy"], row["TrangThai"],
+            )
+            for row in copied
+        ]
+        if staged_rows != expected_rows:
+            raise ValueError(
+                "Composite-key migration verification failed; original table retained."
+            )
+
+        quote = connection.dialect.identifier_preparer.quote
+        old_indexes = inspect(connection).get_indexes(table_name)
+        if engine.dialect.name in {"mysql", "mariadb"}:
+            connection.exec_driver_sql(
+                "RENAME TABLE "
+                f"{quote(table_name)} TO {quote(backup_name)}, "
+                f"{quote(stage_name)} TO {quote(table_name)}"
+            )
+            for index in old_indexes:
+                if index.get("name"):
+                    connection.exec_driver_sql(
+                        f"ALTER TABLE {quote(backup_name)} "
+                        f"DROP INDEX {quote(index['name'])}"
+                    )
+        else:
+            connection.exec_driver_sql(
+                f"ALTER TABLE {quote(table_name)} RENAME TO {quote(backup_name)}"
+            )
+            for index in old_indexes:
+                if index.get("name"):
+                    connection.exec_driver_sql(f"DROP INDEX {quote(index['name'])}")
+            connection.exec_driver_sql(
+                f"ALTER TABLE {quote(stage_name)} RENAME TO {quote(table_name)}"
+            )
+
+        migrated = Table(table_name, MetaData(), autoload_with=connection)
+        Index(
+            "uq_ctdsk_ngay_thu_tu",
+            migrated.c.NgayKham,
+            migrated.c.SoThuTu,
+            unique=True,
+        ).create(connection)
+        Index(
+            "ix_ctdsk_ngay_trang_thai",
+            migrated.c.NgayKham,
+            migrated.c.TrangThai,
+        ).create(connection)
 
     if engine.dialect.name == "sqlite":
         with engine.connect() as connection:

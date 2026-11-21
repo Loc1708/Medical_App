@@ -11,6 +11,14 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import db
 
 
+DON_VI_THUOC_CHUAN = (
+    ("SAMPLE-VIEN", "Viên"),
+    ("SAMPLE-CHAI", "Chai"),
+    ("SAMPLE-VI", "Vỉ"),
+)
+TEN_DON_VI_THUOC_CHUAN = frozenset(ten for _, ten in DON_VI_THUOC_CHUAN)
+
+
 class Role(str, Enum):
     PATIENT = "PATIENT"
     NURSE = "NURSE"
@@ -173,15 +181,13 @@ class ChiTietDanhSachKham(db.Model):
         ),
         db.Index("uq_ctdsk_ngay_thu_tu", "NgayKham", "SoThuTu", unique=True),
         db.Index("ix_ctdsk_ngay_trang_thai", "NgayKham", "TrangThai"),
-        {"sqlite_autoincrement": True},
     )
 
-    maCTDSKham: Mapped[int] = mapped_column(
-        "MaCTDSKham", db.Integer, primary_key=True, autoincrement=True,
+    maDSKham: Mapped[int] = mapped_column(
+        "MaDSKham", db.Integer, primary_key=True,
     )
-    maDSKham: Mapped[int] = mapped_column("MaDSKham", db.Integer, nullable=False)
     maBN: Mapped[int] = mapped_column(
-        "MaBN", db.ForeignKey("BenhNhan.MaBN"), nullable=False,
+        "MaBN", db.ForeignKey("BenhNhan.MaBN"), primary_key=True,
     )
     ngayKham: Mapped[date] = mapped_column("NgayKham", db.Date, nullable=False)
     soThuTu: Mapped[int | None] = mapped_column("SoThuTu", db.Integer, nullable=True)

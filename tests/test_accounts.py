@@ -767,6 +767,12 @@ class AccountTests(unittest.TestCase):
             ),
             10,
         )
+        demo_units = set(db.session.scalars(
+            db.select(DonViThuoc.tenDonVi)
+            .join(Thuoc, Thuoc.maDonVi == DonViThuoc.maDonVi)
+            .where(Thuoc.maThuoc.like("DEMO-%"))
+        ))
+        self.assertEqual(demo_units, {"Viên"})
 
     def test_clinical_schema_upgrade_is_idempotent(self):
         runner = app.test_cli_runner()

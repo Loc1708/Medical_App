@@ -150,16 +150,71 @@ class AdminFeatureTests(unittest.TestCase):
         self.assertEqual(self.post("/admin/medicines/T001/delete").status_code, 302)
         self.assertIsNone(db.session.get(Thuoc, "T001"))
 
-    def test_unit_crud_and_referenced_records_cannot_be_deleted(self):
+    def test_unit_catalog_is_fixed_to_three_types(self):
+        response = self.client.get("/admin/units")
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Viên", html)
+        self.assertIn("Chai", html)
+        self.assertIn("Vỉ", html)
+        self.assertNotIn("THÊM ĐƠN VỊ", html)
+        self.assertNotIn("data-catalog-delete", html)
         self.assertEqual(self.post("/admin/units/new", {
-            "maDonVi": "NEW", "tenDonVi": "Đơn vị mới",
-        }).status_code, 302)
-        self.post("/admin/units/NEW/edit", {"tenDonVi": "Đã sửa"})
-        self.assertEqual(db.session.get(DonViThuoc, "NEW").tenDonVi, "Đã sửa")
-        self.assertIn("Đã sửa", self.client.get("/admin/units?q=Đã").get_data(as_text=True))
-        self.post("/admin/units/NEW/delete")
+            "maDonVi": "NEW", "tenDonVi": "Gói",
+        }).status_code, 405)
         self.assertIsNone(db.session.get(DonViThuoc, "NEW"))
-        self.post("/admin/units/SAMPLE-VIEN/delete")
+        self.assertEqual(self.post("/admin/units/SAMPLE-VIEN/delete").status_code, 405)
+
+        db.session.add(DonViThuoc(maDonVi="OLD-UNIT", tenDonVi="Gói"))
+        db.session.commit()
+        self.assertNotIn(
+            "Gói", self.client.get("/admin/units").get_data(as_text=True)
+        )
+        response = self.post("/admin/medicines/new?modal=1", {
+            **self.medicine_form(), "maDonVi": "OLD-UNIT",
+        })
+        self.assertEqual(response.status_code, 422)
+
+    def test_medicine_unit_migration_maps_legacy_types_to_vien(self):
+        db.session.add_all([
+            DonViThuoc(maDonVi="OLD-GOI", tenDonVi="Gói"),
+            DonViThuoc(maDonVi="OLD-DEMO", tenDonVi="Đơn vị kiểm thử"),
+            Thuoc(maThuoc="OLD-MED-1", tenThuoc="Thuốc cũ 1", donGia=100,
+                  soLuongTon=5, maDonVi="OLD-GOI"),
+            Thuoc(maThuoc="OLD-MED-2", tenThuoc="Thuốc cũ 2", donGia=100,
+                  soLuongTon=5, maDonVi="OLD-DEMO"),
+        ])
+        db.session.commit()
+
+        runner = app.test_cli_runner()
+        no_maintenance = runner.invoke(args=["migrate-medicine-units"])
+        self.assertNotEqual(no_maintenance.exit_code, 0)
+        self.assertIsNotNone(db.session.get(DonViThuoc, "OLD-GOI"))
+        result = runner.invoke(args=["migrate-medicine-units", "--maintenance"])
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertEqual(
+            set(db.session.scalars(db.select(DonViThuoc.tenDonVi))),
+            {"Viên", "Chai", "Vỉ"},
+        )
+        self.assertEqual(db.session.get(Thuoc, "OLD-MED-1").donVi.tenDonVi, "Viên")
+        self.assertEqual(db.session.get(Thuoc, "OLD-MED-2").donVi.tenDonVi, "Viên")
+        self.assertIsNone(db.session.get(DonViThuoc, "OLD-GOI"))
+
+        repeated = runner.invoke(args=["migrate-medicine-units", "--maintenance"])
+        self.assertEqual(repeated.exit_code, 0, repeated.output)
+        self.assertIn("no changes made", repeated.output)
+
+    def test_unit_migration_refuses_unmapped_legacy_type(self):
+        db.session.add(DonViThuoc(maDonVi="OLD-OTHER", tenDonVi="Ống"))
+        db.session.commit()
+        result = app.test_cli_runner().invoke(
+            args=["migrate-medicine-units", "--maintenance"]
+        )
+        self.assertNotEqual(result.exit_code, 0)
+        self.assertIn("Unmapped existing medicine unit", result.output)
+        self.assertIsNotNone(db.session.get(DonViThuoc, "OLD-OTHER"))
+
+    def test_referenced_medicine_cannot_be_deleted(self):
         self.assertIsNotNone(db.session.get(DonViThuoc, "SAMPLE-VIEN"))
         self.exam("used", date(2026, 11, 1), medicines=(("SAMPLE-T001", 1),))
         self.post("/admin/medicines/SAMPLE-T001/delete")
@@ -202,5 +257,9 @@ class AdminFeatureTests(unittest.TestCase):
         result = app.test_cli_runner().invoke(args=["seed-admin-demo"])
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertEqual(db.session.scalar(db.select(db.func.count()).select_from(Thuoc)), 3)
+        self.assertEqual(
+            set(db.session.scalars(db.select(DonViThuoc.tenDonVi))),
+            {"Viên", "Chai", "Vỉ"},
+        )
         self.assertEqual(medicine.soLuongTon, 5)
         self.assertEqual(db.session.get(QuyDinh, "TIEN_KHAM").giaTri, Decimal("200000"))

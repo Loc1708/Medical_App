@@ -91,18 +91,26 @@ màn hình tài khoản hiện là các view Jinja2 tùy chỉnh để quản l�
 
 `init-db` chỉ tạo bảng chưa tồn tại (đợt này bổ sung `QuyDinh`), không sửa bảng cũ.
 `seed-admin-demo` tạo quy định ban đầu 40 bệnh nhân/ngày và tiền khám 100000 VNĐ,
-3 đơn vị mẫu và 3 thuốc mã `SAMPLE-T001`–`SAMPLE-T003` có tên đánh dấu dữ liệu mẫu.
+3 đơn vị chuẩn Viên, Chai, Vỉ và 3 thuốc mã `SAMPLE-T001`–`SAMPLE-T003` có tên đánh dấu dữ liệu mẫu.
 Lệnh không ghi đè giá trị/thuốc đã có và không tạo hóa đơn hoặc bệnh nhân giả.
 Nếu nhóm dùng chung TiDB, chỉ cần một người khởi tạo; không cần chạy lại mỗi lần pull.
 
 Các trang chỉ dành cho ADMIN:
 - `/admin/medicines`: tìm theo tên khi gõ, phân trang, thêm/sửa qua modal và xóa có xác nhận.
-- `/admin/units`: thêm/xóa/sửa/tìm các đơn vị tính.
+- `/admin/units`: xem/tìm danh sách đơn vị cố định Viên, Chai, Vỉ; không cho thêm/sửa/xóa loại khác.
 - `/admin/regulations`: cập nhật số bệnh nhân tối đa và tiền khám trong cùng transaction.
 - `/admin/reports?month=2026-11`: bảng và biểu đồ tháng được chọn.
 
-Mã thuốc/đơn vị nhập khi tạo, không thay đổi khi sửa. Thuốc đã nằm trong đơn thuốc
-(kể cả nháp) và đơn vị còn thuốc tham chiếu không được xóa để giữ lịch sử.
+Để chuyển dữ liệu đơn vị cũ, sao lưu cơ sở dữ liệu, dừng ứng dụng/worker và chạy một lần:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app migrate-medicine-units --maintenance
+```
+
+Lệnh chuyển thuốc đang dùng `Gói` hoặc `Đơn vị kiểm thử` sang `Viên`, giữ nguyên số lượng,
+rồi xóa các đơn vị cũ. Nếu gặp tên đơn vị cũ khác, lệnh dừng và yêu cầu ánh xạ rõ ràng.
+Mã thuốc nhập khi tạo không thay đổi khi sửa. Thuốc đã nằm trong đơn thuốc
+(kể cả nháp) không được xóa để giữ lịch sử.
 JavaScript danh mục nằm ở `static\js\admin\catalog.js`; biểu đồ ở
 `static\js\admin\reports.js`, không thêm logic mới vào `main.js`.
 
@@ -214,6 +222,19 @@ Migration xóa `HoTen`, `GioiTinh`, `NamSinh`, `DiaChi` khỏi bảng chi tiết
 nguyên các lượt khám. Thông tin bệnh nhân được đọc qua `MaBN` từ bảng `BenhNhan`;
 vì vậy lịch sử hiển thị thông tin hồ sơ hiện tại, không còn giữ bản chụp thông tin
 tại thời điểm đăng ký.
+
+Để đổi khóa chính `ChiTietDanhSachKham` từ `MaCTDSKham` sang cặp
+`(MaDSKham, MaBN)`, dừng ứng dụng/tiến trình đang ghi, sao lưu database rồi chạy:
+
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app.index:app migrate-exam-list-composite-key --maintenance
+```
+
+Migration lưu các dòng và cột cũ tại `ChiTietDanhSachKham_legacy`. Nếu một cặp
+danh sách–bệnh nhân có nhiều dòng, dòng có `MaCTDSKham` lớn nhất được giữ trong
+bảng hoạt động; các dòng còn lại vẫn nằm trong bảng legacy để tra cứu. Sau khi
+chuyển khóa, hủy lượt chỉ đổi trạng thái và đăng ký lại sẽ khôi phục dòng của cùng
+cặp khóa. Kiểm tra dữ liệu và backup trước khi khởi động lại ứng dụng.
 
 Để tạo dữ liệu DEMO cho luồng bác sĩ trên database hiện cấu hình, sau migration, chạy:
 

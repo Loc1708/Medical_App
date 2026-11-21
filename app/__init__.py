@@ -256,6 +256,33 @@ def lenhChuyenDangKyChoCu(maintenance: bool) -> None:
     click.echo(f"Moved {moved} waiting registration(s).")
 
 
+@app.cli.command("migrate-exam-list-composite-key")
+@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
+def lenhChuyenKhoaGhepChiTietDanhSach(maintenance: bool) -> None:
+    """Replace the detail-row ID with the list/patient composite primary key."""
+    from app.migration import chuyenChiTietDanhSachKhamSangKhoaGhep
+
+    if not maintenance:
+        raise click.ClickException(
+            "Stop all application writers and pass --maintenance."
+        )
+    try:
+        changed = chuyenChiTietDanhSachKhamSangKhoaGhep(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Exam-list composite-key migration failed.")
+        raise click.ClickException(
+            "Could not migrate exam-list details; inspect the database before retrying."
+        ) from None
+    click.echo(
+        "Composite key applied; previous rows archived in "
+        "ChiTietDanhSachKham_legacy."
+        if changed
+        else "Exam-list details already use the composite key; no changes made."
+    )
+
+
 @app.cli.command("drop-nurse-exam-profile-columns")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
 def lenhXoaCotHoSoTrung(maintenance: bool) -> None:
@@ -283,12 +310,39 @@ def lenhXoaCotHoSoTrung(maintenance: bool) -> None:
     )
 
 
+@app.cli.command("migrate-medicine-units")
+@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
+def lenhChuyenDonViThuoc(maintenance: bool) -> None:
+    """Keep only Viên, Chai, and Vỉ, mapping legacy units to Viên."""
+    from app.migration import chuyenDonViThuocVeBaLoai
+
+    if not maintenance:
+        raise click.ClickException(
+            "Stop all application writers and pass --maintenance."
+        )
+    try:
+        changed = chuyenDonViThuocVeBaLoai(db.engine)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from None
+    except SQLAlchemyError:
+        app.logger.exception("Medicine unit migration failed.")
+        raise click.ClickException(
+            "Could not migrate medicine units; inspect the database before retrying."
+        ) from None
+    click.echo(
+        "Medicine units migrated to Viên, Chai, and Vỉ."
+        if changed
+        else "Medicine units already match Viên, Chai, and Vỉ; no changes made."
+    )
+
+
 @app.cli.command("seed-doctor-demo")
 def taoDuLieuMauBacSi() -> None:
     """Create clearly labeled sample records for the doctor workflow."""
     from sqlalchemy import inspect
     from app.models import (
-        BacSi, BenhNhan, DonViThuoc, NhanVien, PhieuKham, Role, TaiKhoan, Thuoc,
+        BacSi, BenhNhan, DON_VI_THUOC_CHUAN, DonViThuoc, NhanVien, PhieuKham,
+        Role, TaiKhoan, Thuoc,
     )
 
     required = {"TaiKhoan", "NhanVien", "BacSi", "BenhNhan",
@@ -324,15 +378,18 @@ def taoDuLieuMauBacSi() -> None:
             "demo_quynh_test is not the expected demo patient; refusing to modify it."
         )
 
-    demo_units = (
-        ("DEMO-UNIT", "Đơn vị kiểm thử"),
+    ma_don_vi_vien, ten_don_vi_vien = DON_VI_THUOC_CHUAN[0]
+    don_vi_vien = db.session.scalar(
+        db.select(DonViThuoc).where(DonViThuoc.tenDonVi == ten_don_vi_vien)
     )
-    for code, name in demo_units:
-        unit = db.session.get(DonViThuoc, code)
-        if unit is None:
-            db.session.add(DonViThuoc(maDonVi=code, tenDonVi=name))
-        elif unit.tenDonVi != name:
-            raise click.ClickException(f"Unit code {code} already belongs to other data.")
+    if don_vi_vien is None:
+        don_vi_vien = db.session.get(DonViThuoc, ma_don_vi_vien)
+        if don_vi_vien is not None:
+            raise click.ClickException(
+                f"Unit code {ma_don_vi_vien} already belongs to other data."
+            )
+        don_vi_vien = DonViThuoc(maDonVi=ma_don_vi_vien, tenDonVi=ten_don_vi_vien)
+        db.session.add(don_vi_vien)
 
     demo_medicines = (
         ("DEMO-T001", "DEMO - Viên nén thử nghiệm (không dùng điều trị)", 100),
@@ -349,7 +406,7 @@ def taoDuLieuMauBacSi() -> None:
         if medicine is None:
             db.session.add(Thuoc(
                 maThuoc=code, tenThuoc=name, donGia=0,
-                soLuongTon=stock, maDonVi="DEMO-UNIT",
+                soLuongTon=stock, donVi=don_vi_vien,
             ))
         elif not medicine.tenThuoc.startswith("DEMO -"):
             raise click.ClickException(f"Medicine code {code} already belongs to non-demo data.")
@@ -466,7 +523,7 @@ def taoQuanTriVien(username: str, password: str, name: str, phone: str) -> None:
 def taoDuLieuMauQuanTri() -> None:
     """Initialize approved rules and three labeled medicine samples, without overwriting data."""
     from decimal import Decimal
-    from app.models import DonViThuoc, QuyDinh, Thuoc
+    from app.models import DON_VI_THUOC_CHUAN, DonViThuoc, QuyDinh, Thuoc
 
     try:
         rules = (
@@ -478,24 +535,28 @@ def taoDuLieuMauQuanTri() -> None:
                 rule = QuyDinh()
                 rule.maQD, rule.tenQuyDinh, rule.giaTri = code, name, value
                 db.session.add(rule)
-        for code, name in (("SAMPLE-VIEN", "Viên"), ("SAMPLE-CHAI", "Chai"), ("SAMPLE-GOI", "Gói")):
-            unit = db.session.get(DonViThuoc, code)
+        ma_don_vi_theo_ten = {}
+        for ma_mac_dinh, ten in DON_VI_THUOC_CHUAN:
+            unit = db.session.scalar(
+                db.select(DonViThuoc).where(DonViThuoc.tenDonVi == ten)
+            )
             if unit is None:
-                unit = DonViThuoc()
-                unit.maDonVi, unit.tenDonVi = code, name
+                unit = db.session.get(DonViThuoc, ma_mac_dinh)
+                if unit is not None:
+                    raise ValueError(f"Mã {ma_mac_dinh} đã được sử dụng cho đơn vị khác.")
+                unit = DonViThuoc(maDonVi=ma_mac_dinh, tenDonVi=ten)
                 db.session.add(unit)
-            elif unit.tenDonVi != name:
-                raise ValueError(f"Mã {code} đã được sử dụng cho đơn vị khác.")
+            ma_don_vi_theo_ten[ten] = unit.maDonVi
         for code, name, price, unit in (
-            ("SAMPLE-T001", "MẪU - Viên thử nghiệm (không dùng điều trị)", 5000, "SAMPLE-VIEN"),
-            ("SAMPLE-T002", "MẪU - Dung dịch thử nghiệm (không dùng điều trị)", 25000, "SAMPLE-CHAI"),
-            ("SAMPLE-T003", "MẪU - Gói thử nghiệm (không dùng điều trị)", 45000, "SAMPLE-GOI"),
+            ("SAMPLE-T001", "MẪU - Viên thử nghiệm (không dùng điều trị)", 5000, "Viên"),
+            ("SAMPLE-T002", "MẪU - Dung dịch thử nghiệm (không dùng điều trị)", 25000, "Chai"),
+            ("SAMPLE-T003", "MẪU - Thuốc thử nghiệm (không dùng điều trị)", 45000, "Viên"),
         ):
             medicine = db.session.get(Thuoc, code)
             if medicine is None:
                 medicine = Thuoc()
                 medicine.maThuoc, medicine.tenThuoc, medicine.donGia = code, name, price
-                medicine.soLuongTon, medicine.maDonVi = 10, unit
+                medicine.soLuongTon, medicine.maDonVi = 10, ma_don_vi_theo_ten[unit]
                 db.session.add(medicine)
             elif medicine.tenThuoc != name:
                 raise ValueError(f"Mã {code} đã được sử dụng cho thuốc khác.")

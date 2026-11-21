@@ -49,7 +49,7 @@
             <tbody>
                 {% for registration in registrations %}
                 <tr>
-                    <td>DK-{{ "%05d"|format(registration.maCTDSKham) }}</td>
+                    <td>DS-{{ "%05d"|format(registration.maDSKham) }} / BN-{{ "%04d"|format(registration.maBN) }}</td>
                     <td>
                         {% if registration.trangThai == 'DA_XAC_NHAN' %}
                         {{ registration.ngayKham.strftime("%d/%m/%Y") }}

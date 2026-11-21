@@ -211,6 +211,9 @@ Lệnh giữ nguyên mã và thời điểm đăng ký, chuyển từng lượt 
 đăng ký khám cũ (ngày nào muộn hơn) sang ngày gần nhất còn chỗ, chưa chốt và
 không trùng lượt hoạt động của bệnh nhân. Lệnh có thể chạy lại; kiểm tra kết quả
 trước khi khởi động ứng dụng. Không gửi SMS trong bước chuyển dữ liệu.
+Giao diện y tá chỉ cảnh báo khi còn lượt chờ cũ; không còn API duyệt từng lượt.
+Việc chỉnh sửa hồ sơ được thực hiện qua chức năng hồ sơ bệnh nhân, không qua
+API cập nhật lượt khám của y tá.
 
 Với database đang có bốn cột hồ sơ trùng trong `ChiTietDanhSachKham`, dừng ứng dụng,
 sao lưu database và chạy migration:

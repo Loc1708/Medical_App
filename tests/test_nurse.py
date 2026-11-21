@@ -183,42 +183,7 @@ class NurseQueueTests(unittest.TestCase):
         self.assertEqual(len(page.get_json()["waiting"]), 0)
         self.assertEqual(page.get_json()["limit"], 40)
 
-    def test_waiting_patient_requires_a_freed_slot_before_approval(self):
-        self.limit.giaTri = Decimal("1")
-        db.session.commit()
-        exam_date = dao.ngayHienTaiPhongKham().isoformat()
-        first = self._api("POST", "/nurse/api/lists", self._patient(1, exam_date))
-        waiting = self._legacy_waiting(2, date.fromisoformat(exam_date))
-        first_key = self._registration_key_from_json(first.get_json()["patient"])
-        waiting_key = self._registration_key(waiting)
-
-        blocked = self._api(
-            "POST", self._registration_path(*waiting_key, "/approve"),
-            {"date": exam_date},
-        )
-        self.assertEqual(blocked.status_code, 409)
-        self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, waiting_key).trangThai, "CHO_DUYET"
-        )
-
-        cancelled = self._api(
-            "DELETE", self._registration_path(*first_key)
-        )
-        self.assertEqual(cancelled.status_code, 200)
-        approved = self._api(
-            "POST", self._registration_path(*waiting_key, "/approve"),
-            {"date": exam_date},
-        )
-        self.assertEqual(approved.status_code, 200)
-        self.assertEqual(approved.get_json()["patient"]["slot"], 1)
-        self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, waiting_key).trangThai, "CHO_KHAM"
-        )
-        self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, first_key).trangThai, "DA_HUY"
-        )
-
-    def test_waiting_list_remains_visible_and_can_move_to_selected_future_date(self):
+    def test_legacy_waiting_list_remains_visible_for_migration(self):
         self.limit.giaTri = Decimal("1")
         db.session.commit()
         source_date = dao.ngayHienTaiPhongKham()
@@ -228,8 +193,6 @@ class NurseQueueTests(unittest.TestCase):
         )
         waiting = self._legacy_waiting(2, source_date)
         self.assertEqual(first.status_code, 201)
-        waiting_key = self._registration_key(waiting)
-
         target_list = self._api(
             "GET", f"/nurse/api/lists?date={target_date.isoformat()}"
         )
@@ -240,34 +203,21 @@ class NurseQueueTests(unittest.TestCase):
             target_list.get_json()["waiting"][0]["examDate"], source_date.isoformat()
         )
 
-        approved = self._api(
-            "POST",
-            self._registration_path(*waiting_key, "/approve"),
-            {"date": target_date.isoformat()},
-        )
-        self.assertEqual(approved.status_code, 200)
-        approved_patient = approved.get_json()["patient"]
-        self.assertEqual(approved_patient["patientId"], waiting.maBN)
-        self.assertEqual(
-            approved_patient["examDate"], target_date.isoformat()
-        )
-        registration = db.session.get(
-            ChiTietDanhSachKham,
-            self._registration_key_from_json(approved_patient),
-        )
-        self.assertEqual(registration.trangThai, "CHO_KHAM")
-        self.assertEqual(registration.ngayKham, target_date)
+        self.assertEqual(target_list.get_json()["waiting"][0]["patientId"], waiting.maBN)
 
-        source_list = self._api(
-            "GET", f"/nurse/api/lists?date={source_date.isoformat()}"
-        )
-        target_list = self._api(
-            "GET", f"/nurse/api/lists?date={target_date.isoformat()}"
-        )
-        self.assertEqual(len(source_list.get_json()["active"]), 1)
-        self.assertEqual(source_list.get_json()["waiting"], [])
-        self.assertEqual(len(target_list.get_json()["active"]), 1)
-        self.assertEqual(target_list.get_json()["waiting"], [])
+    def test_obsolete_nurse_apis_are_not_available(self):
+        today = dao.ngayHienTaiPhongKham()
+        waiting = self._legacy_waiting(1, today)
+        key = self._registration_key(waiting)
+        path = self._registration_path(*key)
+        self.assertEqual(self._api("POST", path + "/approve", {
+            "date": today.isoformat(),
+        }).status_code, 404)
+        self.assertEqual(self._api("PUT", path, {
+            "name": "Changed",
+        }).status_code, 405)
+        db.session.expire_all()
+        self.assertEqual(db.session.get(ChiTietDanhSachKham, key).trangThai, "CHO_DUYET")
 
     def test_nurse_can_add_patient_to_a_future_exam_date(self):
         future_date = dao.ngayHienTaiPhongKham() + timedelta(days=1)
@@ -423,37 +373,6 @@ class NurseQueueTests(unittest.TestCase):
         self.sms_mock.assert_called_once()
         self.assertIn("Đã gửi 0 SMS, lỗi 1", confirmed.get_json()["message"])
 
-    def test_waiting_patient_cannot_be_approved_into_confirmed_exam_day(self):
-        self.limit.giaTri = Decimal("1")
-        db.session.commit()
-        exam_date = dao.ngayHienTaiPhongKham()
-        active = self._api(
-            "POST", "/nurse/api/lists", self._patient(1, exam_date.isoformat())
-        )
-        waiting = self._legacy_waiting(2, exam_date)
-        self.assertEqual(active.status_code, 201)
-        waiting_key = self._registration_key(waiting)
-        self._api(
-            "POST",
-            "/nurse/api/lists/confirm",
-            {"date": exam_date.isoformat()},
-        )
-
-        rejected = self._api(
-            "POST",
-            self._registration_path(
-                waiting_key[0], waiting_key[1], "/approve"
-            ),
-            {"date": exam_date.isoformat()},
-        )
-
-        self.assertEqual(rejected.status_code, 409)
-        self.assertIn("đã được xác nhận và chốt", rejected.get_json()["error"])
-        self.assertEqual(
-            db.session.get(ChiTietDanhSachKham, waiting_key).trangThai,
-            "CHO_DUYET",
-        )
-
     def test_nurse_cannot_add_patient_from_unrecognized_code_or_raw_fields(self):
         baseline = db.session.scalar(
             db.select(db.func.count()).select_from(BenhNhan)
@@ -481,30 +400,6 @@ class NurseQueueTests(unittest.TestCase):
             db.session.scalar(db.select(db.func.count()).select_from(BenhNhan)),
             baseline,
         )
-
-    def test_waiting_patient_cannot_be_approved_into_a_past_date(self):
-        self.limit.giaTri = Decimal("1")
-        db.session.commit()
-        today = dao.ngayHienTaiPhongKham()
-        self._api(
-            "POST", "/nurse/api/lists", self._patient(1, today.isoformat())
-        )
-        waiting = self._legacy_waiting(2, today)
-        registration_key = self._registration_key(waiting)
-
-        past_date = (today - timedelta(days=1)).isoformat()
-        rejected = self._api(
-            "POST",
-            self._registration_path(
-                registration_key[0], registration_key[1], "/approve"
-            ),
-            {"date": past_date},
-        )
-        self.assertEqual(rejected.status_code, 400)
-        self.assertIn("ngày đã qua", rejected.get_json()["error"])
-        registration = db.session.get(ChiTietDanhSachKham, registration_key)
-        self.assertEqual(registration.trangThai, "CHO_DUYET")
-        self.assertEqual(registration.ngayKham, today)
 
     def test_patient_self_registration_moves_to_next_day(self):
         self.limit.giaTri = Decimal("1")

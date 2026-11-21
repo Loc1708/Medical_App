@@ -114,6 +114,7 @@ def xuLyLoiHttp(error):
 
 
 from app.routes import admin, cashier, doctor, nurse, patient as patient_api
+from app import admin as flask_admin
 
 
 if __name__ == "__main__":

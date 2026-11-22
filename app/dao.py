@@ -202,7 +202,7 @@ def ngayHienTaiPhongKham() -> date:
     return datetime.now(timezone(timedelta(hours=7))).date()
 
 
-def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
+def kiemTraSoLuongToiDa(exam_date: date) -> int | None:
     limit = layGioiHanBenhNhanNgay(lock=True)
     used_slots = set(db.session.scalars(
         db.select(ChiTietDanhSachKham.soThuTu)
@@ -365,7 +365,7 @@ def _timNgayKhamConChoGanNhat(exam_date: date) -> tuple[date, int]:
         except ConfirmedExamDay:
             pass
         else:
-            slot = _timSoThuTuTrongNgay(exam_date)
+            slot = kiemTraSoLuongToiDa(exam_date)
             if slot is not None:
                 return exam_date, slot
         if exam_date == date.max:
@@ -469,7 +469,7 @@ def themBenhNhan(
 ) -> ChiTietDanhSachKham:
     layGioiHanBenhNhanNgay(lock=True)
     _kiemTraNgayKhamChuaChot(exam_date)
-    slot = _timSoThuTuTrongNgay(exam_date)
+    slot = kiemTraSoLuongToiDa(exam_date)
     if slot is None:
         raise DailyCapacityReached(
             f"Danh sách ngày {exam_date.strftime('%d/%m/%Y')} đã đủ chỗ. "

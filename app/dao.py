@@ -50,6 +50,10 @@ def timKiemBenhNhanTheoId(code: str) -> BenhNhan | None:
     return db.session.get(BenhNhan, int(match.group(1)))
 
 
+def layThongTinBenhNhan(code: str) -> BenhNhan | None:
+    return timKiemBenhNhanTheoId(code)
+
+
 def timBenhNhanTheoMa(keyword: str, *, limit: int = 10) -> list[BenhNhan]:
     query = keyword.strip().upper()
     if query in {"B", "BN", "BN-"}:
@@ -145,6 +149,15 @@ def timKiemThuoc(
     )), total
 
 
+def layThongTinThuoc(
+    keyword: str = "",
+    *,
+    page: int = 1,
+    page_size: int = 10,
+) -> tuple[list[Thuoc], int]:
+    return timKiemThuoc(keyword, page=page, page_size=page_size)
+
+
 def layLichSuKham(
     patient_id: int,
     *,
@@ -170,6 +183,24 @@ def layLichSuKham(
         .limit(page_size)
     ))
     return exams, total
+
+
+def layLichSuBenhNhan(
+    patient_id: int,
+    *,
+    page: int = 1,
+    page_size: int = 5,
+) -> tuple[list[PhieuKham], int]:
+    return layLichSuKham(patient_id, page=page, page_size=page_size)
+
+
+def layDanhSachLichSu(
+    patient_id: int,
+    *,
+    page: int = 1,
+    page_size: int = 5,
+) -> tuple[list[PhieuKham], int]:
+    return layLichSuBenhNhan(patient_id, page=page, page_size=page_size)
 
 
 def layDangKyKhamCuaBenhNhan(patient_id: int) -> list[ChiTietDanhSachKham]:
@@ -646,6 +677,68 @@ def _taoHoaDonPhieuKham(
     return invoice
 
 
+def taoHoaDon(
+    exam: PhieuKham,
+    doctor: BacSi,
+    prescriptions: list[dict],
+) -> HoaDon:
+    return _taoHoaDonPhieuKham(exam, doctor, prescriptions)
+
+
+def capNhatLuongThuoc(
+    medicines_by_code: dict[str, Thuoc],
+    quantities_by_code: dict[str, int],
+) -> None:
+    for code, quantity in quantities_by_code.items():
+        medicines_by_code[code].soLuongTon -= quantity
+
+
+def capNhatSoLuongThuoc(
+    medicines_by_code: dict[str, Thuoc],
+    quantities_by_code: dict[str, int],
+) -> None:
+    capNhatSoLuongThuoc(medicines_by_code, quantities_by_code)
+
+
+def taoPhieuKham(
+    *,
+    patient: BenhNhan,
+    doctor: BacSi,
+    exam_date: date,
+    symptoms: str,
+    diagnosis: str,
+    status: str,
+    exam: PhieuKham | None,
+) -> PhieuKham:
+    if exam is None:
+        exam = PhieuKham(maPhieuKham=str(uuid4()))
+        db.session.add(exam)
+    else:
+        for detail in list(exam.chiTietDonThuocs):
+            db.session.delete(detail)
+        exam.chiTietDonThuocs.clear()
+    exam.ngayKham = exam_date
+    exam.trieuChung = symptoms
+    exam.duDoanLoaiBenh = diagnosis or None
+    exam.trangThai = status
+    exam.benhNhan = patient
+    exam.bacSi = doctor
+    return exam
+
+
+def taoChiTietDonThuoc(
+    exam: PhieuKham,
+    prescription: dict,
+) -> ChiTietDonThuoc:
+    detail = ChiTietDonThuoc(
+        thuoc=prescription["medicine"],
+        soLuong=prescription["quantity"],
+        cachDung=prescription["instructions"],
+    )
+    exam.chiTietDonThuocs.append(detail)
+    return detail
+
+
 def lapPhieuKham(
     patient: BenhNhan,
     doctor: BacSi,
@@ -711,32 +804,22 @@ def lapPhieuKham(
                 raise ValueError(
                     f"Số lượng thuốc {medicine.tenThuoc} vượt quá tồn kho."
                 )
-        for code, quantity in quantities_by_code.items():
-            medicines_by_code[code].soLuongTon -= quantity
+        capNhatSoLuongThuoc(medicines_by_code, quantities_by_code)
         prescriptions = locked_prescriptions
 
-    if exam is None:
-        exam = PhieuKham(maPhieuKham=str(uuid4()))
-        db.session.add(exam)
-    else:
-        for detail in list(exam.chiTietDonThuocs):
-            db.session.delete(detail)
-        exam.chiTietDonThuocs.clear()
-
-    exam.ngayKham = exam_date
-    exam.trieuChung = symptoms
-    exam.duDoanLoaiBenh = diagnosis or None
-    exam.trangThai = status
-    exam.benhNhan = patient
-    exam.bacSi = doctor
+    exam = taoPhieuKham(
+        patient=patient,
+        doctor=doctor,
+        exam_date=exam_date,
+        symptoms=symptoms,
+        diagnosis=diagnosis,
+        status=status,
+        exam=exam,
+    )
     for prescription in prescriptions:
-        exam.chiTietDonThuocs.append(ChiTietDonThuoc(
-            thuoc=prescription["medicine"],
-            soLuong=prescription["quantity"],
-            cachDung=prescription["instructions"],
-        ))
+        taoChiTietDonThuoc(exam, prescription)
     if status == "DA_LAP":
-        invoice = _taoHoaDonPhieuKham(exam, doctor, prescriptions)
+        invoice = taoHoaDon(exam, doctor, prescriptions)
     try:
         db.session.commit()
     except IntegrityError:

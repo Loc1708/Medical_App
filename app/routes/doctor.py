@@ -12,11 +12,11 @@ from app.utils import yeuCauVaiTro
 
 @app.get("/doctor/api/patients", endpoint="doctor_find_patient")
 @yeuCauVaiTro(Role.DOCTOR)
-def bacSiTimBenhNhan():
+def layThongTinBenhNhan():
     code = request.args.get("code", "").strip()
     if not code:
         return jsonify(error="Vui lòng nhập mã bệnh nhân."), 400
-    patient = dao.timKiemBenhNhanTheoId(code)
+    patient = dao.layThongTinBenhNhan(code)
     if patient is None:
         return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
     return jsonify(patient={
@@ -31,8 +31,8 @@ def bacSiTimBenhNhan():
 
 @app.get("/doctor/api/patients/<code>/history", endpoint="doctor_patient_history")
 @yeuCauVaiTro(Role.DOCTOR)
-def bacSiXemLichSuKham(code: str):
-    patient = dao.timKiemBenhNhanTheoId(code)
+def layDanhSachLichSu(code: str):
+    patient = dao.layThongTinBenhNhan(code)
     if patient is None:
         return jsonify(error="Không tìm thấy bệnh nhân với mã này."), 404
     raw_page = request.args.get("page", "1")
@@ -40,7 +40,7 @@ def bacSiXemLichSuKham(code: str):
         return jsonify(error="Số trang không hợp lệ."), 400
     page = int(raw_page)
     page_size = 5
-    history, total = dao.layLichSuKham(
+    history, total = dao.layDanhSachLichSu(
         patient.maBN,
         page=page,
         page_size=page_size,
@@ -123,13 +123,13 @@ def bacSiXoaBanNhap(exam_id: str):
 
 @app.get("/doctor/api/medicines", endpoint="doctor_search_medicines")
 @yeuCauVaiTro(Role.DOCTOR)
-def bacSiTraCuuThuoc():
+def layDanhSachThuoc():
     keyword = request.args.get("q", "").strip()
     raw_page = request.args.get("page", "1")
     if not re.fullmatch(r"[0-9]{1,6}", raw_page) or int(raw_page) < 1:
         return jsonify(error="Số trang không hợp lệ."), 400
     page = int(raw_page)
-    medicines, total = dao.timKiemThuoc(keyword, page=page)
+    medicines, total = dao.layThongTinThuoc(keyword, page=page)
     return jsonify(medicines=[{
         "code": medicine.maThuoc,
         "name": medicine.tenThuoc,
@@ -142,12 +142,12 @@ def bacSiTraCuuThuoc():
 
 @app.post("/doctor/api/exams", endpoint="doctor_create_exam")
 @yeuCauVaiTro(Role.DOCTOR)
-def bacSiLapPhieuKham():
+def lapPhieuKham():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify(error="Dữ liệu phiếu khám không hợp lệ."), 400
 
-    patient = dao.timKiemBenhNhanTheoId(str(payload.get("patient_code", "")))
+    patient = dao.layThongTinBenhNhan(str(payload.get("patient_code", "")))
     if patient is None:
         return jsonify(error="Vui lòng tìm bệnh nhân hợp lệ trước khi lập phiếu."), 400
     symptoms = payload.get("symptoms")

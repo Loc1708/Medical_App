@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from werkzeug.security import check_password_hash, generate_password_hash
+from werkzeug.security import check_password_hash
 
 from app import db
 
@@ -72,12 +74,16 @@ class TaiKhoan(db.Model):
         return profile.hoTen if profile else self.tenDangNhap
 
     def datMatKhau(self, password: str) -> None:
-        self.matKhau = generate_password_hash(password)
+        self.matKhau = hashlib.md5(password.strip().encode("utf-8")).hexdigest()
 
     def dangNhap(self, tenDangNhap: str, matKhau: str) -> bool:
-        return (
-            self.trangThai and self.tenDangNhap == tenDangNhap.strip().lower()
-            and check_password_hash(self.matKhau, matKhau)
+        if not self.trangThai or self.tenDangNhap != tenDangNhap.strip().lower():
+            return False
+        if "$" in self.matKhau:
+            return check_password_hash(self.matKhau, matKhau)
+        return hmac.compare_digest(
+            self.matKhau,
+            hashlib.md5(matKhau.strip().encode("utf-8")).hexdigest(),
         )
 
     def dangXuat(self) -> bool:

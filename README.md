@@ -91,6 +91,10 @@ Nhập tên đăng nhập, mật khẩu và họ tên theo yêu cầu trong term
 được nhập ẩn, cần xác nhận lại và có từ 10 đến 128 ký tự. Không có tài khoản
 quản trị mặc định.
 
+Mật khẩu mới và mật khẩu được đặt lại dùng MD5 giống dự án mẫu của lớp; tài
+khoản đã lưu bằng Werkzeug vẫn đăng nhập được. MD5 không có salt và dễ bị dò,
+chỉ phù hợp cho mục đích học tập, không nên dùng cho triển khai thực tế.
+
 Để chạy thử các nghiệp vụ, khởi tạo quy định, đơn vị và thuốc **mẫu**:
 
 ```powershell

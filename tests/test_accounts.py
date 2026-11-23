@@ -1,3 +1,4 @@
+import hashlib
 import unittest
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -7,6 +8,7 @@ from flask import g
 from flask.testing import FlaskClient
 from sqlalchemy import inspect
 from sqlalchemy.exc import OperationalError
+from werkzeug.security import generate_password_hash
 
 from app.index import app
 from app import dao, db
@@ -92,6 +94,35 @@ class AccountTests(unittest.TestCase):
         self.assertIsNone(account.nhanVien)
         self.assertNotEqual(account.matKhau, self.password)
         self.assertTrue(account.dangNhap("patient", self.password))
+
+    def test_new_and_changed_passwords_use_sample_md5(self):
+        account = dao.taoTaiKhoan(self.data("password_test"))
+        self.assertEqual(
+            account.matKhau,
+            hashlib.md5(self.password.encode("utf-8")).hexdigest(),
+        )
+        self.assertIsNotNone(dao.xacThucTaiKhoan("password_test", f" {self.password} "))
+        self.assertIsNone(dao.xacThucTaiKhoan("password_test", "wrong-password"))
+
+        account.doiMatKhau("password_test", "  New-password-123!  ")
+        db.session.commit()
+        self.assertEqual(
+            account.matKhau,
+            hashlib.md5(b"New-password-123!").hexdigest(),
+        )
+        self.assertIsNotNone(dao.xacThucTaiKhoan("password_test", "New-password-123!"))
+        self.assertIsNone(dao.xacThucTaiKhoan("password_test", self.password))
+
+    def test_existing_werkzeug_passwords_remain_usable(self):
+        account = dao.taoTaiKhoan(self.data("legacy_password_test"))
+        account.matKhau = generate_password_hash("  Legacy-password-123!  ")
+        db.session.commit()
+        self.assertIsNotNone(
+            dao.xacThucTaiKhoan("legacy_password_test", "  Legacy-password-123!  ")
+        )
+        self.assertIsNone(
+            dao.xacThucTaiKhoan("legacy_password_test", "Legacy-password-123!")
+        )
 
     def test_patient_can_register_exam_and_view_own_registration(self):
         patient = dao.taoTaiKhoan(self.data("registered_patient"))

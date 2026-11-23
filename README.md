@@ -35,20 +35,26 @@ CREATE DATABASE medical_app CHARACTER SET utf8mb4;
 
 Nếu cơ sở dữ liệu đã tồn tại, không cần tạo lại. Tài khoản MySQL được dùng phải
 có quyền kết nối, tạo bảng và đọc/ghi dữ liệu trong cơ sở dữ liệu này.
-Trong thư mục gốc dự án, tạo tệp có tên `.env` và điền thông tin MySQL:
+Tệp `.env.example` là mẫu cấu hình, không chứa mật khẩu thật và có thể đưa lên
+Git. Trong VS Code, tạo tệp `.env` ở thư mục gốc nếu chưa có; mở `.env.example`,
+sao chép nội dung mẫu vào `.env`, rồi chỉnh giá trị sau dấu `=`:
 
-```dotenv
-MYSQL_HOST=<dia_chi_may_chu_mysql>
-MYSQL_PORT=3306
-MYSQL_USER=<ten_nguoi_dung>
-MYSQL_PASSWORD='<mat_khau>'
-MYSQL_DATABASE=medical_app
-SMS_MODE=mock
-```
+| Biến | Giá trị cần điền |
+| --- | --- |
+| `MYSQL_HOST` | Địa chỉ máy chủ MySQL, khớp tên trên chứng chỉ TLS. |
+| `MYSQL_PORT` | Cổng MySQL; giữ `3306` nếu máy chủ dùng cổng này. |
+| `MYSQL_USER` | Tên tài khoản MySQL có quyền trên cơ sở dữ liệu. |
+| `MYSQL_PASSWORD` | Mật khẩu của tài khoản MySQL; không được để trống. |
+| `MYSQL_DATABASE` | Tên cơ sở dữ liệu đã tạo, ví dụ `medical_app`. |
+| `SMS_MODE` | Giữ `mock` để mô phỏng SMS, không gửi tin nhắn thật. |
+| `ESMS_API_KEY` | API Key do eSMS cung cấp; điền vào `.env` khi sử dụng eSMS. |
+| `ESMS_SECRET_KEY` | Secret Key do eSMS cung cấp; điền vào `.env` khi sử dụng eSMS. |
 
-Thay các giá trị trong dấu `<>` bằng thông tin thực tế; không giữ dấu `<>`.
-`MYSQL_HOST` là tên máy chủ trên chứng chỉ MySQL; điều chỉnh cổng theo cấu hình
-máy chủ. Mật khẩu phải có giá trị. Ứng dụng yêu cầu kết nối TLS, kiểm tra
+Thay các phần trong dấu `<>` bằng thông tin thực tế, không giữ dấu `<>`. Nếu
+đã có `.env`, chỉ cần kiểm tra và chỉnh các giá trị trong tệp đó, không ghi đè.
+Với `SMS_MODE=mock`, có thể để trống hai khóa eSMS. Nếu đặt `SMS_MODE=sandbox`,
+ứng dụng sẽ gọi API eSMS ở chế độ thử nghiệm và cần hai khóa này.
+Ứng dụng yêu cầu kết nối TLS, kiểm tra
 chứng chỉ và tên máy chủ bằng CA trong thư viện `certifi`. Máy chủ MySQL cần
 bật TLS và có chứng chỉ phù hợp, được CA đó tin cậy; chứng chỉ tự ký mặc định
 có thể không kết nối được.
@@ -56,8 +62,9 @@ có thể không kết nối được.
 Ứng dụng tự đọc `.env`. Nếu môi trường đã có `DATABASE_URL`, giá trị đó được
 ưu tiên hơn `MYSQL_*`; các biến môi trường có sẵn cũng được ưu tiên hơn `.env`.
 Không đưa mật khẩu hoặc khóa dịch vụ vào bản ZIP hay Git; người chạy tự tạo
-`.env` trên máy của mình. Cần xác nhận đúng cơ sở dữ liệu trước khi chạy lệnh
-làm thay đổi dữ liệu.
+`.env` trên máy của mình. `.env` được Git bỏ qua; không điền thông tin thật vào
+`.env.example`. Cần xác nhận đúng cơ sở dữ liệu trước khi chạy lệnh làm thay
+đổi dữ liệu.
 
 Kiểm tra kết nối, không tạo bảng hoặc thay đổi dữ liệu:
 

@@ -78,8 +78,9 @@ Tạo các bảng còn thiếu:
 ```
 
 `init-db` không cập nhật cấu trúc bảng đã tồn tại. Với cơ sở dữ liệu cũ cần
-nâng cấp schema, sao lưu và kiểm tra migration phù hợp trước; không xóa hoặc
-tạo lại bảng để thay thế migration.
+nâng cấp schema, hãy sao lưu và hỏi nhóm trước khi nâng cấp; không xóa hoặc
+tạo lại các bảng đang có dữ liệu. Dự án không còn các lệnh chuyển đổi mã tài
+khoản, đơn vị thuốc và cấu trúc danh sách khám cũ.
 
 Tạo tài khoản quản trị đầu tiên:
 

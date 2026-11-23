@@ -113,10 +113,10 @@ def khoiTaoCoSoDuLieu() -> None:
                 table for table in db.metadata.sorted_tables
                 if table is not ChiTietDanhSachKham.__table__
             ]
-            db.create_all(tables=tables)
+            db.metadata.create_all(bind=db.engine, tables=tables)
             click.echo(
-                "Existing registration schema retained; run "
-                "upgrade-nurse-many-to-many-schema while writers are stopped."
+                "Existing registration schema retained; back up and upgrade "
+                "the old database schema before using it."
             )
             return
     db.create_all()
@@ -140,8 +140,8 @@ def taoBangDangKyKham() -> None:
         }
         if "MaBN" in day_columns:
             raise click.ClickException(
-                "DanhSachKham uses the older registration schema; run "
-                "upgrade-nurse-many-to-many-schema with writers stopped."
+                "DanhSachKham uses the older registration schema; back up and "
+                "upgrade the database schema before using it."
             )
     try:
         db.metadata.create_all(
@@ -192,50 +192,6 @@ def nangCapCauTrucPhieuKham() -> None:
     click.echo("PhieuKham clinical columns added; existing exams keep DA_LAP.")
 
 
-@app.cli.command("upgrade-nurse-queue-schema")
-def nangCapCauTrucHangCho() -> None:
-    """Prepare patient profiles and daily registration rows for the nurse queue."""
-    from app.migration import nangCapCauTrucHangCho as upgrade_schema
-
-    try:
-        changed = upgrade_schema(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from None
-    except SQLAlchemyError:
-        app.logger.exception("Nurse queue schema upgrade failed.")
-        raise click.ClickException(
-            "Could not upgrade the nurse queue schema; inspect the database before retrying."
-        ) from None
-    if changed:
-        click.echo(
-            "Nurse queue schema is ready; existing registrations were preserved and dated."
-        )
-    else:
-        click.echo("Nurse queue schema already exists; no changes made.")
-
-
-@app.cli.command("upgrade-nurse-many-to-many-schema")
-def nangCapCauTrucDanhSachKham() -> None:
-    """Move registration rows into the daily-list/patient association schema."""
-    from app.migration import nangCapCauTrucDanhSachKham as upgrade_schema
-
-    try:
-        changed = upgrade_schema(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from None
-    except SQLAlchemyError:
-        app.logger.exception("Nurse many-to-many schema upgrade failed.")
-        raise click.ClickException(
-            "Could not upgrade nurse exam-list tables; inspect the database before retrying."
-        ) from None
-    if changed:
-        click.echo(
-            "Exam lists were normalized; existing registration data remains in the legacy backup."
-        )
-    else:
-        click.echo("Nurse many-to-many schema already exists; no changes made.")
-
-
 @app.cli.command("move-waiting-registrations")
 @click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
 def lenhChuyenDangKyChoCu(maintenance: bool) -> None:
@@ -254,112 +210,6 @@ def lenhChuyenDangKyChoCu(maintenance: bool) -> None:
         app.logger.exception("Waiting registration migration failed.")
         raise click.ClickException("Could not move waiting registrations; see application log.") from None
     click.echo(f"Moved {moved} waiting registration(s).")
-
-
-@app.cli.command("migrate-exam-list-composite-key")
-@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def lenhChuyenKhoaGhepChiTietDanhSach(maintenance: bool) -> None:
-    """Replace the detail-row ID with the list/patient composite primary key."""
-    from app.migration import chuyenChiTietDanhSachKhamSangKhoaGhep
-
-    if not maintenance:
-        raise click.ClickException(
-            "Stop all application writers and pass --maintenance."
-        )
-    try:
-        changed = chuyenChiTietDanhSachKhamSangKhoaGhep(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from None
-    except SQLAlchemyError:
-        app.logger.exception("Exam-list composite-key migration failed.")
-        raise click.ClickException(
-            "Could not migrate exam-list details; inspect the database before retrying."
-        ) from None
-    click.echo(
-        "Composite key applied; previous rows archived in "
-        "ChiTietDanhSachKham_legacy."
-        if changed
-        else "Exam-list details already use the composite key; no changes made."
-    )
-
-
-@app.cli.command("remove-exam-detail-date-column")
-@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def lenhXoaNgayKhamChiTietDanhSach(maintenance: bool) -> None:
-    """Remove the redundant NgayKham column from exam-list details."""
-    from app.migration import loaiBoNgayKhamKhoiChiTietDanhSachKham
-
-    if not maintenance:
-        raise click.ClickException(
-            "Stop all application writers and pass --maintenance."
-        )
-    try:
-        changed = loaiBoNgayKhamKhoiChiTietDanhSachKham(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from None
-    except SQLAlchemyError:
-        app.logger.exception("Exam-detail date-column removal failed.")
-        raise click.ClickException(
-            "Could not remove NgayKham; inspect the database before retrying."
-        ) from None
-    click.echo(
-        "Removed NgayKham from ChiTietDanhSachKham."
-        if changed
-        else "NgayKham is already absent; no changes made."
-    )
-
-
-@app.cli.command("drop-nurse-exam-profile-columns")
-@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def lenhXoaCotHoSoTrung(maintenance: bool) -> None:
-    """Remove duplicate patient profile fields from exam-list details."""
-    from sqlalchemy.exc import SQLAlchemyError
-    from app.migration import xoaCotHoSoTrung
-
-    if not maintenance:
-        raise click.ClickException(
-            "Stop all application writers and pass --maintenance."
-        )
-    try:
-        changed = xoaCotHoSoTrung(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from None
-    except SQLAlchemyError:
-        app.logger.exception("Nurse exam profile column migration failed.")
-        raise click.ClickException(
-            "Could not remove duplicate profile columns; inspect the database before retrying."
-        ) from None
-    click.echo(
-        "Duplicate patient profile columns removed from ChiTietDanhSachKham."
-        if changed
-        else "Duplicate patient profile columns are already absent; no changes made."
-    )
-
-
-@app.cli.command("migrate-medicine-units")
-@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def lenhChuyenDonViThuoc(maintenance: bool) -> None:
-    """Keep only Viên, Chai, and Vỉ, mapping legacy units to Viên."""
-    from app.migration import chuyenDonViThuocVeBaLoai
-
-    if not maintenance:
-        raise click.ClickException(
-            "Stop all application writers and pass --maintenance."
-        )
-    try:
-        changed = chuyenDonViThuocVeBaLoai(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from None
-    except SQLAlchemyError:
-        app.logger.exception("Medicine unit migration failed.")
-        raise click.ClickException(
-            "Could not migrate medicine units; inspect the database before retrying."
-        ) from None
-    click.echo(
-        "Medicine units migrated to Viên, Chai, and Vỉ."
-        if changed
-        else "Medicine units already match Viên, Chai, and Vỉ; no changes made."
-    )
 
 
 @app.cli.command("seed-doctor-demo")
@@ -595,24 +445,3 @@ def taoDuLieuMauQuanTri() -> None:
         app.logger.exception("Admin sample initialization failed.")
         raise click.ClickException("Không khởi tạo được dữ liệu mẫu; xem log ứng dụng.") from None
     click.echo("Rules and three sample medicines ready; existing data was not overwritten.")
-
-
-@app.cli.command("migrate-account-ids")
-@click.option("--maintenance", is_flag=True, help="Confirm all application writers are stopped.")
-def lenhChuyenMaTaiKhoan(maintenance: bool) -> None:
-    """Preserve old UUID tables and migrate account/profile keys to integers."""
-    from sqlalchemy.exc import SQLAlchemyError
-    from app.migration import chuyenMaTaiKhoan
-    if not maintenance:
-        raise click.ClickException("Stop all application writers and pass --maintenance.")
-    try:
-        changed = chuyenMaTaiKhoan(db.engine)
-    except ValueError as error:
-        raise click.ClickException(str(error)) from error
-    except SQLAlchemyError as error:
-        app.logger.error("Identifier migration failed: %s", type(error).__name__)
-        raise click.ClickException(
-            "Migration failed. Original/backup tables were not deleted; inspect before retrying."
-        ) from error
-    click.echo("Integer IDs ready; original tables retained as *_uuid_backup." if changed
-               else "Identifiers are already integers; no changes made.")

@@ -246,7 +246,7 @@ if (doctorStatus) {
         );
     }
 
-    async function timBenhNhan() {
+    async function layThongTinBenhNhan() {
         const code = patientQuery.value.trim();
         if (!code) {
             selectedPatientCode = "";
@@ -275,9 +275,9 @@ if (doctorStatus) {
         }
     }
 
-    async function taiLichSuKham(page = 1) {
+    async function layDanhSachSachLichSu(page = 1) {
         if (!selectedPatientCode) {
-            await timBenhNhan();
+            await layThongTinBenhNhan();
             if (!selectedPatientCode) return;
         }
         const requestPatientCode = selectedPatientCode;
@@ -333,7 +333,7 @@ if (doctorStatus) {
             });
             hienThiDonThuoc();
             hienThiTrangThaiBacSi(`Đang tiếp tục bản nháp ${examId}.`);
-            await taiLichSuKham();
+            await layDanhSachSachLichSu();
             await taiDanhSachBanNhap();
             document.querySelector("#exam-details").scrollIntoView({
                 block: "start", behavior: "smooth",
@@ -418,7 +418,7 @@ if (doctorStatus) {
             }
             hienThiTrangThaiBacSi(result.message);
             await taiDanhSachBanNhap();
-            if (selectedPatientCode) await taiLichSuKham();
+            if (selectedPatientCode) await layDanhSachSachLichSu();
         } catch (error) {
             hienThiTrangThaiBacSi(error.message, true);
         } finally {
@@ -649,15 +649,15 @@ if (doctorStatus) {
             return;
         }
         if (searchButton) {
-            timBenhNhan();
+            layThongTinBenhNhan();
             return;
         }
         if (historyButton) {
-            taiLichSuKham();
+            layDanhSachSachLichSu();
             return;
         }
         if (historyPageButton && !historyPageButton.disabled) {
-            taiLichSuKham(Number(historyPageButton.dataset.historyPage));
+            layDanhSachSachLichSu(Number(historyPageButton.dataset.historyPage));
             return;
         }
         if (historyPrescriptionsButton) {
@@ -828,7 +828,7 @@ if (doctorStatus) {
                             + (result.invoice_id ? ` · Mã hóa đơn: ${result.invoice_id}` : "")
                 );
                 if (requestPatientCode === selectedPatientCode) {
-                    await taiLichSuKham();
+                    await layDanhSachSachLichSu();
                 }
                 await taiDanhSachBanNhap();
             }
@@ -851,7 +851,7 @@ if (doctorStatus) {
         if (event.key !== "Enter") return;
         if (event.target === patientQuery) {
             event.preventDefault();
-            timBenhNhan();
+            layThongTinBenhNhan();
         } else if (event.target === medicineQuery) {
             event.preventDefault();
             traCuuThuoc();

@@ -697,7 +697,7 @@ def capNhatSoLuongThuoc(
     medicines_by_code: dict[str, Thuoc],
     quantities_by_code: dict[str, int],
 ) -> None:
-    capNhatSoLuongThuoc(medicines_by_code, quantities_by_code)
+    capNhatLuongThuoc(medicines_by_code, quantities_by_code)
 
 
 def taoPhieuKham(

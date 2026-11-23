@@ -1,4 +1,3 @@
-import re
 from datetime import date
 
 from flask import jsonify, render_template, request
@@ -26,36 +25,6 @@ def _layNgayKham(value: object) -> date:
         return date.fromisoformat(value)
     except ValueError:
         raise ValueError("Ngày khám không hợp lệ.") from None
-
-
-def _kiemTraDuLieuKham(payload: object) -> dict:
-    if not isinstance(payload, dict):
-        raise ValueError("Dữ liệu bệnh nhân không hợp lệ.")
-    name = payload.get("name", "")
-    gender = payload.get("gender", "")
-    phone = payload.get("phone", "")
-    address = payload.get("address", "")
-    try:
-        birth_year = int(payload.get("birthYear", ""))
-    except (TypeError, ValueError):
-        birth_year = 0
-    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100:
-        raise ValueError("Họ tên bắt buộc và tối đa 100 ký tự.")
-    if not isinstance(gender, str) or gender not in {"Nam", "Nữ", "Khác"}:
-        raise ValueError("Giới tính không hợp lệ.")
-    if not 1900 <= birth_year <= date.today().year:
-        raise ValueError("Năm sinh phải từ 1900 đến năm hiện tại.")
-    if not isinstance(phone, str) or not re.fullmatch(r"\+?[0-9]{9,15}", phone.strip()):
-        raise ValueError("Số điện thoại phải có 9–15 chữ số, có thể bắt đầu bằng +.")
-    if not isinstance(address, str) or not address.strip() or len(address.strip()) > 255:
-        raise ValueError("Địa chỉ bắt buộc và tối đa 255 ký tự.")
-    return {
-        "name": name.strip(),
-        "gender": gender,
-        "birth_year": birth_year,
-        "phone": phone.strip(),
-        "address": address.strip(),
-    }
 
 
 def _chuyenLuotKhamThanhJson(registration) -> dict:
@@ -152,27 +121,6 @@ def yTaThemLuotKham():
                    message="Đã lưu bệnh nhân vào danh sách khám."), 201
 
 
-@app.put(
-    "/nurse/api/lists/<int:maDSKham>/<int:maBN>",
-    endpoint="nurse_update_exam",
-)
-@yeuCauVaiTro(Role.NURSE)
-def yTaCapNhatLuotKham(maDSKham: int, maBN: int):
-    try:
-        data = _kiemTraDuLieuKham(request.get_json(silent=True))
-        registration = dao.capNhatLuotKham(maDSKham, maBN, **data)
-    except LookupError as error:
-        return jsonify(error=str(error)), 404
-    except ValueError as error:
-        db.session.rollback()
-        return jsonify(error=str(error)), 409
-    except SQLAlchemyError:
-        db.session.rollback()
-        app.logger.exception("Nurse patient update failed.")
-        return jsonify(error="Không thể cập nhật lượt khám trong cơ sở dữ liệu."), 500
-    return jsonify(patient=_chuyenLuotKhamThanhJson(registration), message="Đã cập nhật bệnh nhân.")
-
-
 @app.delete(
     "/nurse/api/lists/<int:maDSKham>/<int:maBN>",
     endpoint="nurse_cancel_exam",
@@ -188,48 +136,6 @@ def yTaHuyLuotKham(maDSKham: int, maBN: int):
         app.logger.exception("Nurse exam cancellation failed.")
         return jsonify(error="Không thể hủy lượt khám trong cơ sở dữ liệu."), 500
     return jsonify(message="Đã hủy lượt khám.")
-
-
-@app.post(
-    "/nurse/api/lists/<int:maDSKham>/<int:maBN>/approve",
-    endpoint="nurse_approve_exam",
-)
-@yeuCauVaiTro(Role.NURSE)
-def yTaDuyetLuotChoCu(maDSKham: int, maBN: int):
-    try:
-        payload = request.get_json(silent=True)
-        target_date = _layNgayKham(
-            payload.get("date") if isinstance(payload, dict) else None
-        )
-        nurse = current_user.nhanVien
-        registration = dao.duyetLuotChoCu(
-            maDSKham,
-            maBN,
-            target_date,
-            nurse_id=nurse.maNV if nurse else None,
-        )
-    except LookupError as error:
-        return jsonify(error=str(error)), 404
-    except dao.ConfirmedExamDay as error:
-        db.session.rollback()
-        return jsonify(error=str(error)), 409
-    except dao.DailyCapacityReached as error:
-        db.session.rollback()
-        return jsonify(error=str(error)), 409
-    except ValueError as error:
-        db.session.rollback()
-        return jsonify(error=str(error)), 400
-    except SQLAlchemyError:
-        db.session.rollback()
-        app.logger.exception("Nurse waiting-list approval failed.")
-        return jsonify(error="Không thể duyệt bệnh nhân trong cơ sở dữ liệu."), 500
-    return jsonify(
-        patient=_chuyenLuotKhamThanhJson(registration),
-        message=(
-            "Đã duyệt bệnh nhân vào danh sách khám ngày "
-            f"{registration.ngayKham.strftime('%d/%m/%Y')}."
-        ),
-    )
 
 
 @app.post("/nurse/api/lists/confirm", endpoint="nurse_confirm_exam_day")

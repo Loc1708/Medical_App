@@ -1,7 +1,7 @@
 {% extends "layout/base.html" %}
 {% block title %}{{ 'Chỉnh sửa' if account else 'Tạo' }} tài khoản · Phòng mạch Nhịp Sống{% endblock %}
 {% block content %}
-<a href="{{ url_for('admin_accounts') }}" class="back-link">← Danh sách tài khoản</a>
+<a href="{{ url_for('quan_tri.admin_accounts') }}" class="back-link">← Danh sách tài khoản</a>
 <div class="panel form-panel mt-3">
     <span class="eyebrow">QUẢN LÝ TRUY CẬP</span>
     <h1 class="h3 mt-2">{{ 'Chỉnh sửa tài khoản' if account else 'Tạo tài khoản mới' }}</h1>

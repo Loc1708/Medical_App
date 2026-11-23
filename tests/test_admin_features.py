@@ -67,6 +67,34 @@ class AdminFeatureTests(unittest.TestCase):
         return dict(maThuoc="T001", tenThuoc="Thuốc kiểm thử", donGia="1234.50",
                     soLuongTon="10", maDonVi="SAMPLE-VIEN", **changes)
 
+    def test_admin_interface_has_no_separate_flask_admin_console(self):
+        from app.admin import QuanTriPhongMach
+
+        pages = {
+            "/admin/accounts": "admin_accounts",
+            "/admin/medicines": "admin_medicines",
+            "/admin/units": "admin_units",
+            "/admin/regulations": "admin_regulations",
+            "/admin/reports": "admin_reports",
+        }
+        adapter = app.url_map.bind("localhost")
+        for path, endpoint in pages.items():
+            resolved, _ = adapter.match(path, method="GET")
+            self.assertEqual(resolved, f"quan_tri.{endpoint}")
+            self.assertIsInstance(app.view_functions[resolved].__self__, QuanTriPhongMach)
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            html = response.get_data(as_text=True)
+            self.assertNotIn("Flask-Admin (chỉ xem)", html)
+            self.assertIn(f'class="nav-item active" href="{path}"', html)
+        self.assertEqual(self.client.get("/admin-console/").status_code, 404)
+
+        guest = app.test_client()
+        self.assertEqual(guest.get("/admin/accounts").status_code, 302)
+        self.login("patient", guest)
+        for path in pages:
+            self.assertEqual(guest.get(path).status_code, 403)
+
     def exam(self, code, day, *, status="DA_LAP", medicines=(), invoice=None):
         exam = PhieuKham(maPhieuKham=code, ngayKham=day, trieuChung="Kiểm thử",
                          benhNhan=self.patient.benhNhan, bacSi=self.doctor.nhanVien.bacSi,

@@ -88,7 +88,7 @@ def layHoaDonChuaThanhToan(ma_bn=None):
     res = (db.session.query(HoaDon)
            .join(PhieuKham, HoaDon.maPhieuKham == PhieuKham.maPhieuKham)
            .join(BenhNhan, PhieuKham.maBN == BenhNhan.maBN)
-           .filter(HoaDon.trangThai.contains('CHUA_THANH_TOAN')))
+           .filter(HoaDon.trangThai == 'CHUA_THANH_TOAN'))
 
     if ma_bn:
         res = res.filter(BenhNhan.maBN == ma_bn)
@@ -113,8 +113,8 @@ def thanhToan(ma_hd):
     if hd is None or hd.trangThai != 'CHUA_THANH_TOAN':
         return None
 
-    hd.trangThai = 'DA_THANH_TOAN'   # sua gia tri cot
-    db.session.commit()              # luu xuong database
+    hd.trangThai = 'DA_THANH_TOAN'   
+    db.session.commit()              
     return hd
 
 def timKiemThuoc(
@@ -145,7 +145,7 @@ def timKiemThuoc(
     )), total
 
 
-def layDanhSachLichSuKham(
+def layLichSuKham(
     patient_id: int,
     *,
     page: int = 1,
@@ -202,7 +202,7 @@ def ngayHienTaiPhongKham() -> date:
     return datetime.now(timezone(timedelta(hours=7))).date()
 
 
-def _timSoThuTuTrongNgay(exam_date: date) -> int | None:
+def kiemTraSoLuongToiDa(exam_date: date) -> int | None:
     limit = layGioiHanBenhNhanNgay(lock=True)
     used_slots = set(db.session.scalars(
         db.select(ChiTietDanhSachKham.soThuTu)
@@ -365,7 +365,7 @@ def _timNgayKhamConChoGanNhat(exam_date: date) -> tuple[date, int]:
         except ConfirmedExamDay:
             pass
         else:
-            slot = _timSoThuTuTrongNgay(exam_date)
+            slot = kiemTraSoLuongToiDa(exam_date)
             if slot is not None:
                 return exam_date, slot
         if exam_date == date.max:
@@ -469,7 +469,7 @@ def themBenhNhan(
 ) -> ChiTietDanhSachKham:
     layGioiHanBenhNhanNgay(lock=True)
     _kiemTraNgayKhamChuaChot(exam_date)
-    slot = _timSoThuTuTrongNgay(exam_date)
+    slot = kiemTraSoLuongToiDa(exam_date)
     if slot is None:
         raise DailyCapacityReached(
             f"Danh sách ngày {exam_date.strftime('%d/%m/%Y')} đã đủ chỗ. "
@@ -511,53 +511,6 @@ def themBenhNhan(
     return registration
 
 
-def capNhatLuotKham(
-    maDSKham: int,
-    maBN: int,
-    *,
-    name: str,
-    gender: str,
-    birth_year: int,
-    phone: str,
-    address: str,
-) -> ChiTietDanhSachKham:
-    registration = db.session.scalar(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.maDSKham == maDSKham,
-            ChiTietDanhSachKham.maBN == maBN,
-            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-        ).with_for_update()
-    )
-    if registration is None:
-        raise LookupError("Không tìm thấy lượt khám đang hoạt động.")
-    if registration.trangThai == "DA_XAC_NHAN":
-        raise ValueError("Lượt khám đã xác nhận, không thể chỉnh sửa.")
-
-    duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maBN)
-        .join(BenhNhan)
-        .where(
-            ChiTietDanhSachKham.maDSKham == registration.maDSKham,
-            BenhNhan.soDienThoai == phone,
-            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-            or_(
-                ChiTietDanhSachKham.maDSKham != maDSKham,
-                ChiTietDanhSachKham.maBN != maBN,
-            ),
-        )
-    )
-    if duplicate is not None:
-        raise ValueError("Số điện thoại này đã có trong danh sách ngày đang chọn.")
-
-    registration.benhNhan.hoTen = name
-    registration.benhNhan.gioiTinh = gender
-    registration.benhNhan.namSinh = birth_year
-    registration.benhNhan.diaChi = address
-    registration.benhNhan.soDienThoai = phone
-    _luuThayDoiDanhSachKham()
-    return registration
-
-
 def huyLuotKham(maDSKham: int, maBN: int) -> None:
     layGioiHanBenhNhanNgay(lock=True)
     registration = db.session.scalar(
@@ -572,69 +525,6 @@ def huyLuotKham(maDSKham: int, maBN: int) -> None:
     registration.trangThai = "DA_HUY"
     registration.soThuTu = None
     _luuThayDoiDanhSachKham()
-
-
-def duyetLuotChoCu(
-    maDSKham: int,
-    maBN: int,
-    target_date: date,
-    nurse_id: int | None = None,
-) -> ChiTietDanhSachKham:
-    layGioiHanBenhNhanNgay(lock=True)
-    if target_date < ngayHienTaiPhongKham():
-        raise PastExamDate("Không thể duyệt bệnh nhân vào ngày đã qua.")
-
-    registration = db.session.scalar(
-        db.select(ChiTietDanhSachKham).where(
-            ChiTietDanhSachKham.maDSKham == maDSKham,
-            ChiTietDanhSachKham.maBN == maBN,
-            ChiTietDanhSachKham.trangThai == "CHO_DUYET",
-        ).with_for_update()
-    )
-    if registration is None:
-        raise LookupError("Không tìm thấy lượt khám đang chờ duyệt.")
-
-    _kiemTraNgayKhamChuaChot(target_date)
-
-    duplicate = db.session.scalar(
-        db.select(ChiTietDanhSachKham.maBN)
-        .join(DanhSachKham, DanhSachKham.maDSKham == ChiTietDanhSachKham.maDSKham)
-        .where(
-            ChiTietDanhSachKham.maBN == registration.maBN,
-            DanhSachKham.ngayKham == target_date,
-            ChiTietDanhSachKham.trangThai.in_(NURSE_VISIBLE_STATUSES),
-            or_(
-                ChiTietDanhSachKham.maDSKham != registration.maDSKham,
-                ChiTietDanhSachKham.maBN != registration.maBN,
-            ),
-        )
-    )
-    if duplicate is not None:
-        raise ValueError("Bệnh nhân đã có lượt đăng ký trong ngày được chọn.")
-
-    slot = _timSoThuTuTrongNgay(target_date)
-    if slot is None:
-        limit = layGioiHanBenhNhanNgay()
-        raise DailyCapacityReached(
-            f"Danh sách ngày {target_date.strftime('%d/%m/%Y')} đã đủ {limit} bệnh nhân."
-        )
-    exam_day = _layHoacTaoDanhSachNgay(target_date, nurse_id)
-    db.session.flush()
-    existing = db.session.get(
-        ChiTietDanhSachKham, (exam_day.maDSKham, registration.maBN)
-    )
-    if existing is not None and existing is not registration:
-        existing.soThuTu = slot
-        existing.ngayDangKy = registration.ngayDangKy
-        existing.trangThai = "CHO_KHAM"
-        db.session.delete(registration)
-        registration = existing
-    else:
-        registration.danhSachKham = exam_day
-        registration.soThuTu = slot
-        registration.trangThai = "CHO_KHAM"
-    _luuThayDoiDanhSachKham()
-    return registration
 
 
 def xacNhanDanhSach(

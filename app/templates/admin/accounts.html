@@ -8,7 +8,7 @@
 <section class="panel accounts-panel mt-4">
     <div class="accounts-panel-heading">
         <h2 class="h6 mb-0">Tài khoản hiện có</h2>
-        <a class="btn btn-primary btn-sm" data-account-modal href="{{ url_for('admin_account_create') }}">+ Tạo tài khoản</a>
+        <a class="btn btn-primary btn-sm" data-account-modal href="{{ url_for('quan_tri.admin_account_create') }}">+ Tạo tài khoản</a>
     </div>
     <div class="accounts-panel-body">
     <form class="row g-3 align-items-end mb-4" method="get">
@@ -32,7 +32,7 @@
                     <td>{{ account.hoTen }}{% if account.maTK == current_user.maTK %}<small class="d-block text-muted">Tài khoản của bạn</small>{% endif %}</td>
                     <td>{{ account.tenDangNhap }}</td><td><span class="role-badge account-role">{{ account.role.tenVaiTro }}</span></td>
                     <td>
-                        <form class="account-status-form" method="post" action="{{ url_for('admin_account_status', account_id=account.maTK) }}">
+                        <form class="account-status-form" method="post" action="{{ url_for('quan_tri.admin_account_status', account_id=account.maTK) }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input type="hidden" name="active" value="{{ '0' if account.trangThai else '1' }}">
                             <input type="hidden" name="q" value="{{ keyword }}">
@@ -47,7 +47,7 @@
                             </button>
                         </form>
                     </td>
-                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" data-account-modal href="{{ url_for('admin_account_edit', account_id=account.maTK) }}">Sửa</a></td>
+                    <td class="text-end"><a class="btn btn-sm btn-outline-secondary" data-account-modal href="{{ url_for('quan_tri.admin_account_edit', account_id=account.maTK) }}">Sửa</a></td>
                 </tr>
                 {% else %}
                 <tr><td colspan="7" class="text-center text-muted py-5">Không tìm thấy tài khoản phù hợp.</td></tr>
@@ -58,8 +58,8 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <small class="text-muted">{{ page.total }} tài khoản · Trang {{ page.page }} / {{ page.pages or 1 }}</small>
         <nav aria-label="Phân trang tài khoản">
-            {% if page.has_prev %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_accounts', page=page.prev_num, q=keyword, role=role_filter) }}">Trước</a>{% endif %}
-            {% if page.has_next %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin_accounts', page=page.next_num, q=keyword, role=role_filter) }}">Tiếp</a>{% endif %}
+            {% if page.has_prev %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('quan_tri.admin_accounts', page=page.prev_num, q=keyword, role=role_filter) }}">Trước</a>{% endif %}
+            {% if page.has_next %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('quan_tri.admin_accounts', page=page.next_num, q=keyword, role=role_filter) }}">Tiếp</a>{% endif %}
         </nav>
     </div>
     </div>

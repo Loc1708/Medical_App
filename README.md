@@ -103,16 +103,6 @@ Mật khẩu mới và mật khẩu được đặt lại dùng MD5 giống dự
 khoản đã lưu bằng Werkzeug vẫn đăng nhập được. MD5 không có salt và dễ bị dò,
 chỉ phù hợp cho mục đích học tập, không nên dùng cho triển khai thực tế.
 
-Để chạy thử các nghiệp vụ, khởi tạo quy định, đơn vị và thuốc **mẫu**:
-
-```powershell
-.\.venv\Scripts\python.exe -m flask --app app.index:app seed-admin-demo
-```
-
-Lệnh tạo quy định mặc định, đơn vị Viên/Chai/Vỉ và ba thuốc được đánh dấu dữ
-liệu mẫu; không ghi đè các giá trị đã tồn tại. Không dùng thuốc mẫu cho điều trị.
-Đây là lệnh ghi vào CSDL: chỉ chạy trên cơ sở dữ liệu được phép dùng dữ liệu mẫu.
-
 ## 4. Chạy ứng dụng
 
 ```powershell

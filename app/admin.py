@@ -38,7 +38,7 @@ class QuanTriPhongMach(AdminIndexView):
 
     @expose("/medicines")
     def admin_medicines(self):
-        return xuLyQuanTri.quanLyThuoc()
+        return xuLyQuanTri.layThongTinThuoc()
 
     @expose("/units")
     def admin_units(self):

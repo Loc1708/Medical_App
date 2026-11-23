@@ -119,7 +119,7 @@ def quanTriDoiTrangThaiTaiKhoan(account_id: int):
 
 
 @yeuCauVaiTro(Role.ADMIN)
-def quanLyThuoc():
+def layThongTinThuoc():
     keyword = request.args.get("q", "").strip()[:100]
     statement = db.select(Thuoc)
     if keyword:

@@ -52,6 +52,7 @@ main { flex: 1; }
 .btn-sm { padding: .4rem .8rem; }
 .btn-primary { background: var(--primary); border-color: var(--primary); }
 .btn-primary:hover, .btn-primary:focus { background: #134a46; border-color: #134a46; }
+#btnThanhToan:disabled { background: #4b7470; border-color: #4b7470; opacity: 1; cursor: not-allowed; pointer-events: auto; }
 .btn-outline-primary { color: var(--primary); border-color: var(--primary); }
 .btn-outline-primary:hover, .btn-outline-primary:focus { background: var(--primary); border-color: var(--primary); color: white; }
 .form-label { font-weight: 600; font-size: .9rem; }

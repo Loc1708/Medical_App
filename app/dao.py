@@ -12,8 +12,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from app import app, db
 from app.models import (
     BacSi, BenhNhan, ChiTietDanhSachKham, ChiTietDonThuoc, DanhSachKham,
-    DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan,
-    TEN_DON_VI_THUOC_CHUAN, Thuoc,
+    DonViThuoc, HoaDon, NhanVien, PhieuKham, QuyDinh, Role, TaiKhoan, Thuoc,
 )
 from app.utils import kiemTraMatKhau
 
@@ -978,8 +977,6 @@ def _luuThuoc(actor_id: int, form, code: str | None = None) -> Thuoc:
     ).with_for_update())
     if unit is None:
         raise ValueError("Đơn vị thuốc không tồn tại. Hãy chọn lại.")
-    if unit.tenDonVi not in TEN_DON_VI_THUOC_CHUAN:
-        raise ValueError("Đơn vị thuốc không hợp lệ. Chỉ được chọn Viên, Chai hoặc Vỉ.")
     if code is None:
         medicine = Thuoc()
         medicine.maThuoc = _kiemTraMaDanhMuc(form.get("maThuoc", ""))
@@ -1004,6 +1001,49 @@ def themThuoc(actor_id: int, form) -> Thuoc:
 
 def suaThuoc(actor_id: int, form, code: str) -> Thuoc:
     return _luuThuoc(actor_id, form, code)
+
+
+def _luuDonViThuoc(actor_id: int, form, code: str | None = None) -> DonViThuoc:
+    _khoaQuanTriVien(actor_id)
+    name = form.get("tenDonVi", "").strip()
+    if not name or len(name) > 50:
+        raise ValueError("Tên đơn vị bắt buộc, tối đa 50 ký tự.")
+    if code is None:
+        unit = DonViThuoc()
+        unit.maDonVi = _kiemTraMaDanhMuc(form.get("maDonVi", ""))
+        db.session.add(unit)
+    else:
+        unit = db.session.scalar(db.select(DonViThuoc).where(
+            DonViThuoc.maDonVi == code,
+        ).with_for_update().execution_options(populate_existing=True))
+        if unit is None:
+            raise ValueError("Đơn vị thuốc không còn tồn tại.")
+    unit.tenDonVi = name
+    _luuDanhMuc()
+    return unit
+
+
+def themDonViThuoc(actor_id: int, form) -> DonViThuoc:
+    return _luuDonViThuoc(actor_id, form)
+
+
+def suaDonViThuoc(actor_id: int, form, code: str) -> DonViThuoc:
+    return _luuDonViThuoc(actor_id, form, code)
+
+
+def xoaDonViThuoc(actor_id: int, code: str) -> None:
+    _khoaQuanTriVien(actor_id)
+    unit = db.session.scalar(db.select(DonViThuoc).where(
+        DonViThuoc.maDonVi == code,
+    ).with_for_update())
+    if unit is None:
+        raise ValueError("Đơn vị thuốc không còn tồn tại.")
+    if db.session.scalar(db.select(Thuoc.maThuoc).where(
+        Thuoc.maDonVi == code,
+    ).limit(1)) is not None:
+        raise ValueError("Không thể xóa đơn vị thuốc đang được sử dụng.")
+    db.session.delete(unit)
+    _luuDanhMuc()
 
 
 def _xoaMucDanhMuc(actor_id: int, code: str) -> None:

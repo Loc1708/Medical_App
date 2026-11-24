@@ -13,7 +13,7 @@
         {% include "components/account_fields.html" %}
         <label class="form-label mt-3" for="confirm">Xác nhận mật khẩu</label>
         <input id="confirm" class="form-control" type="password" name="xacNhanMatKhau"
-               minlength="10" maxlength="128" autocomplete="new-password" required>
+               minlength="10" maxlength="128" pattern="[a-zA-Z0-9]{10,128}" autocomplete="new-password" required>
         <button class="btn btn-primary mt-4">Đăng ký</button>
         <a class="btn btn-link mt-4" href="{{ url_for('login_view') }}">Đã có tài khoản?</a>
     </form>

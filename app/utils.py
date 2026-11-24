@@ -48,20 +48,32 @@ def kiemTraMatKhau(password: str) -> None:
 
 
 def layDuLieuTaiKhoan(form, *, registration: bool = False) -> dict:
-    username = form.get("tenDangNhap", "").strip().lower()
-    if not re.fullmatch(r"[a-z0-9_.-]{3,80}", username):
+    username = form.get("tenDangNhap", "")
+    if registration:
+        if not re.fullmatch(r"[a-zA-Z0-9]{3,80}", username):
+            raise ValueError("Tên đăng nhập phải gồm 3–80 chữ không dấu hoặc chữ số.")
+        password = form.get("matKhau", "")
+        kiemTraMatKhau(password)
+        if not re.fullmatch(r"[a-zA-Z0-9]+", password):
+            raise ValueError("Mật khẩu chỉ được gồm chữ không dấu và chữ số.")
+    username = username.strip().lower()
+    if not registration and not re.fullmatch(r"[a-z0-9_.-]{3,80}", username):
         raise ValueError("Tên đăng nhập gồm 3–80 chữ không dấu, số hoặc ký tự _ . -")
     try:
         role = Role.PATIENT if registration else Role(form.get("role", ""))
     except ValueError:
         raise ValueError("Vai trò không hợp lệ.") from None
     name = form.get("hoTen", "").strip()
-    phone = form.get("soDienThoai", "").strip()
+    phone = form.get("soDienThoai", "")
+    if not registration:
+        phone = phone.strip()
     if not name or len(name) > 100:
         raise ValueError("Họ tên bắt buộc và tối đa 100 ký tự.")
-    if (role == Role.PATIENT and not phone) or (
+    if registration and not re.fullmatch(r"[0-9]{9,15}", phone):
+        raise ValueError("Số điện thoại phải gồm 9–15 chữ số.")
+    if not registration and ((role == Role.PATIENT and not phone) or (
         phone and not re.fullmatch(r"\+?[0-9]{9,15}", phone)
-    ):
+    )):
         raise ValueError("Số điện thoại phải có 9–15 chữ số, có thể bắt đầu bằng +.")
     data = {
         "tenDangNhap": username, "role": role, "hoTen": name,

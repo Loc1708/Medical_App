@@ -6,8 +6,7 @@ from flask_login import current_user
 
 from app import dao, db
 from app.models import (
-    BenhNhan, DonViThuoc, NhanVien, QuyDinh, Role, TaiKhoan,
-    TEN_DON_VI_THUOC_CHUAN, Thuoc,
+    BenhNhan, DonViThuoc, NhanVien, QuyDinh, Role, TaiKhoan, Thuoc,
 )
 from app.utils import layDuLieuTaiKhoan, yeuCauVaiTro
 
@@ -131,9 +130,7 @@ def layThongTinThuoc():
 @yeuCauVaiTro(Role.ADMIN)
 def quanLyDonViThuoc():
     keyword = request.args.get("q", "").strip()[:50]
-    statement = db.select(DonViThuoc).where(
-        DonViThuoc.tenDonVi.in_(TEN_DON_VI_THUOC_CHUAN)
-    )
+    statement = db.select(DonViThuoc)
     if keyword:
         statement = statement.where(DonViThuoc.tenDonVi.contains(keyword, autoescape=True))
     page = db.paginate(statement.order_by(DonViThuoc.maDonVi), per_page=10, max_per_page=10)
@@ -167,9 +164,7 @@ def _chinhSuaThuoc(code: str | None):
     else:
         values = {}
     units = list(db.session.scalars(
-        db.select(DonViThuoc)
-        .where(DonViThuoc.tenDonVi.in_(TEN_DON_VI_THUOC_CHUAN))
-        .order_by(DonViThuoc.tenDonVi)
+        db.select(DonViThuoc).order_by(DonViThuoc.tenDonVi)
     ))
     modal = request.args.get("modal") == "1"
     return render_template(
@@ -186,7 +181,34 @@ def quanTriChinhSuaThuoc(code: str | None = None):
 
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriChinhSuaDonVi(code: str | None = None):
-    abort(405, description="Đơn vị thuốc được cố định theo quy định.")
+    item = db.get_or_404(DonViThuoc, code) if code else None
+    error_message = None
+    if request.method == "POST":
+        try:
+            if code is None:
+                dao.themDonViThuoc(current_user.maTK, request.form)
+            else:
+                dao.suaDonViThuoc(current_user.maTK, request.form, code)
+        except ValueError as error:
+            db.session.rollback()
+            error_message = str(error)
+        else:
+            flash("Đã lưu đơn vị thuốc.", "success")
+            if request.args.get("modal") == "1":
+                return "", 204
+            return redirect(url_for("quan_tri.admin_units"))
+    if request.method == "POST":
+        values = request.form
+    elif item:
+        values = {"maDonVi": item.maDonVi, "tenDonVi": item.tenDonVi}
+    else:
+        values = {}
+    modal = request.args.get("modal") == "1"
+    return render_template(
+        "components/catalog_dialog.html" if modal else "admin/catalog_form.html",
+        values=values, item=item, unit_mode=True,
+        error_message=error_message, modal=modal,
+    ), 422 if modal and error_message else 200
 
 
 @yeuCauVaiTro(Role.ADMIN)
@@ -203,7 +225,14 @@ def quanTriXoaThuoc(code: str):
 
 @yeuCauVaiTro(Role.ADMIN)
 def quanTriXoaDonVi(code: str):
-    abort(405, description="Đơn vị thuốc được cố định theo quy định.")
+    try:
+        dao.xoaDonViThuoc(current_user.maTK, code)
+    except ValueError as error:
+        db.session.rollback()
+        flash(str(error), "danger")
+    else:
+        flash("Đã xóa đơn vị thuốc.", "success")
+    return redirect(url_for("quan_tri.admin_units", q=request.form.get("q", "")))
 
 
 @yeuCauVaiTro(Role.ADMIN)

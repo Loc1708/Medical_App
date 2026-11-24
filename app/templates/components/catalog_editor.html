@@ -9,7 +9,7 @@
     <input id="item-name" name="{{ 'tenDonVi' if unit_mode else 'tenThuoc' }}" class="form-control mb-3"
            maxlength="{{ 50 if unit_mode else 100 }}" required value="{{ values.get('tenDonVi' if unit_mode else 'tenThuoc', '') }}">
     {% if not unit_mode %}
-    {% if not units %}<div class="alert alert-warning">Chưa có đơn vị chuẩn. Hãy chạy lệnh seed-admin-demo trước khi thêm thuốc.</div>{% endif %}
+    {% if not units %}<div class="alert alert-warning">Chưa có đơn vị thuốc. Hãy thêm đơn vị trước khi thêm thuốc.</div>{% endif %}
     <label class="form-label" for="medicine-unit">Đơn vị tính</label>
     <select id="medicine-unit" class="form-select mb-3" name="maDonVi" required>
         <option value="">Chọn đơn vị</option>

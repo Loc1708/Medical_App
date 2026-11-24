@@ -18,9 +18,6 @@ DON_VI_THUOC_CHUAN = (
     ("SAMPLE-CHAI", "Chai"),
     ("SAMPLE-VI", "Vỉ"),
 )
-TEN_DON_VI_THUOC_CHUAN = frozenset(ten for _, ten in DON_VI_THUOC_CHUAN)
-
-
 class Role(str, Enum):
     PATIENT = "PATIENT"
     NURSE = "NURSE"

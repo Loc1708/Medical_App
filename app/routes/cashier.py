@@ -13,8 +13,9 @@ def thuNganTimKiemBenhNhan():
     patients = dao.thuNganTimBenhNhan(code)
         
     return jsonify(patients=[{
-        "code": p.maBN,
+        "code": p.maHienThi,
         "name": p.hoTen,
+        "phone": p.soDienThoai,
     }for p in patients])
         
 @app.route('/cashier/api/receipts', methods=['get'], endpoint="get_unpaid_receipts_list")

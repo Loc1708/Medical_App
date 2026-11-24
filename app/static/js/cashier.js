@@ -20,39 +20,47 @@ function timKiemBenhNhan() {
         })
         .then((data) => {
             let patients = data.patients || [];
+            list.replaceChildren();
 
             if (patients.length === 0) {
-                list.innerHTML =
-                    '<li class="list-group-item text-muted">Không tìm thấy bệnh nhân</li>';
-                list.classList.remove("d-none");
+                let message = document.createElement("p");
+                message.className = "nurse-patient-no-results";
+                message.textContent = "Không tìm thấy bệnh nhân phù hợp.";
+                list.append(message);
+                list.hidden = false;
                 return;
             }
 
-            let html = "";
-
             patients.forEach((p) => {
-                html += `
-                    <li class="list-group-item list-group-item-action"
-                        style="cursor: pointer;"
-                        onclick="chonBenhNhan('${p.code}', '${p.name}')">
-                        <strong>${p.name}</strong>
-                        <small class="text-muted">(${p.code})</small>
-                    </li>`;
+                let button = document.createElement("button");
+                button.type = "button";
+                button.className = "nurse-patient-suggestion";
+                button.textContent = p.code;
+                button.addEventListener("click", () => {
+                    chonBenhNhan(p.code, p.name);
+                });
+
+                let details = document.createElement("small");
+                details.textContent = `${p.name} · ${p.phone}`;
+                button.append(details);
+                list.append(button);
             });
-            list.innerHTML = html;
-            list.classList.remove("d-none");
+            list.hidden = false;
         })
         .catch((err) => {
-            list.innerHTML = `<li class="list-group-item text-danger">${err.message}</li>`;
-            list.classList.remove("d-none");
+            let message = document.createElement("p");
+            message.className = "nurse-patient-no-results text-danger";
+            message.textContent = err.message;
+            list.replaceChildren(message);
+            list.hidden = false;
         });
 }
 
 function chonBenhNhan(patientCode, patientName) {
     document.getElementById("kw").value = patientName;
     let list = document.getElementById("list");
-    list.innerHTML = "";
-    list.classList.add("d-none");
+    list.replaceChildren();
+    list.hidden = true;
 
     layDanhSachHoaDonChuaThanhToan(patientCode);
 }
@@ -112,8 +120,8 @@ function lamMoiBieuMauThuNgan() {
     document.getElementById("kw").value = "";
 
     let list = document.getElementById("list");
-    list.innerHTML = "";
-    list.classList.add("d-none");
+    list.replaceChildren();
+    list.hidden = true;
 
     document.getElementById("receipts_list").innerHTML =
         '<option value="" selected disabled hidden> --Danh sách hóa đơn chưa thanh toán-- </option>';

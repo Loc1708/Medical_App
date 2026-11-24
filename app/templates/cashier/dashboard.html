@@ -9,13 +9,12 @@
 
 
 <div>
-  <div class="position-relative">
-    <input type="text" id="kw" class="form-control" autocomplete="off"
-      placeholder="🔍 Tìm kiếm bệnh nhân bằng mã hoặc tên..." oninput="timKiemBenhNhan()" />
-
-    <ul id="list" class="list-group position-absolute w-100 d-none shadow-sm"
-      style="z-index: 10; max-height: 250px; overflow-y: auto; top: 100%; margin-top: 4px;">
-    </ul>
+  <div class="nurse-patient-lookup cashier-patient-lookup">
+    <div class="nurse-patient-lookup-row">
+      <input type="text" id="kw" class="form-control" autocomplete="off"
+        placeholder="🔍 Tìm kiếm bệnh nhân bằng mã hoặc tên..." oninput="timKiemBenhNhan()" />
+    </div>
+    <div id="list" class="nurse-patient-suggestions" hidden></div>
   </div>
 
   <select class="form-select mt-3" id="receipts_list" onchange="chonHoaDon()">

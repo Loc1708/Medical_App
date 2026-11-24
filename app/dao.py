@@ -103,13 +103,20 @@ def thuNganTimBenhNhan(kw=None):
         return []
 
     kw = kw.strip()
-    clean_kw = kw.upper().replace("BN-", "")
+    patients = {patient.maBN: patient for patient in timBenhNhanTheoMa(kw)}
 
-    dieu_kien = [BenhNhan.hoTen.contains(kw)]
-    if clean_kw.isdigit():
-        dieu_kien.append(cast(BenhNhan.maBN, String).contains(clean_kw))
+    patients_by_name = (
+        BenhNhan.query.filter(BenhNhan.hoTen.contains(kw))
+        .order_by(BenhNhan.maBN)
+        .limit(10)
+        .all()
+    )
+    for patient in patients_by_name:
+        patients.setdefault(patient.maBN, patient)
+        if len(patients) == 10:
+            break
 
-    return BenhNhan.query.filter(or_(*dieu_kien)).limit(10).all()
+    return list(patients.values())
 
 def thanhToan(ma_hd):
     hd = HoaDon.query.get(ma_hd)
